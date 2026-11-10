@@ -10,10 +10,10 @@ export const rooms = {
 } as const;
 export type RoomId = keyof typeof rooms;
 export type ItemId = "safety-line" | "hand-mirror" | "glass-prism";
-export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean }; journal: string[] };
+export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean }; journal: string[] };
 export function initialWorld(): WorldState {
   return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive" },
-    flags: { pumpOpen: false, stairOpen: false }, journal: [] };
+    flags: { pumpOpen: false, stairOpen: false, lineFound: false }, journal: [] };
 }
 export function roomId(value: string): value is RoomId { return Object.hasOwn(rooms, value); }
 export function itemId(value: string): value is ItemId { return ["safety-line", "hand-mirror", "glass-prism"].includes(value); }
@@ -27,11 +27,12 @@ export function canMove(world: WorldState, from: RoomId, to: RoomId): boolean {
 export function viewRoom(world: WorldState, room: RoomId, actor: string): string {
   const info = rooms[room];
   const exits = Object.values(info.exits).map((to) => `${rooms[to as RoomId].name}${canMove(world, room, to as RoomId) ? "" : " (blocked)"}`).join(", ");
-  const visible = info.objects.filter((item) => item !== "safety-line" && world.items[item as ItemId] === room);
+  const visible = info.objects.filter((item) => (item !== "safety-line" || world.flags.lineFound) && world.items[item as ItemId] === room);
   return `${info.name}. ${info.text} Exits: ${exits}. Visible items: ${visible.length ? visible.join(", ") : "none"}.`;
 }
 export function examine(world: WorldState, room: RoomId, target: string): string | null {
   if (room === "quay" && target === "cleat" && world.items["safety-line"] === "quay") return "A reusable safety-line is coiled beneath the cleat.";
+  if (target === "safety-line" && !world.flags.lineFound) return null;
   if (itemId(target) && world.items[target] === room) return `You see ${target} here.`;
   if (room === "tavern" && target === "survey-plate") return "The brass survey plate shows the harbor controls: BALANCE, DIVERT, SHUT, then LIGHT.";
   if (room === "market" && target === "gauge-slate") return "Suri's slate marks a level middle setting between two channels.";

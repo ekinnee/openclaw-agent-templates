@@ -50,7 +50,7 @@ test("movement is legal, blocked routes remain blocked, and player-safe views tr
   assert.match(await f.run("open pump-hatch h1"), /Opened pump-hatch/);
   assert.match(await f.run("move archive m3"), /Flooded Archive/);
   assert.match(await f.run("look"), /glass-prism/);
-  assert.match(await f.run("examine harbor-plan"), /BALANCE/);
+  assert.match(await f.run("examine harbor-plan clue1"), /BALANCE/);
   assert.match(await f.run("recap"), /route to the Archive/);
   assert.doesNotMatch(await f.run("look"), /GM-only|unrevealed ending/);
 });
@@ -58,14 +58,17 @@ test("movement is legal, blocked routes remain blocked, and player-safe views tr
 test("unique item pickup and receipt replay cannot claim twice; wrong-room examination is denied", async () => {
   const f = fixture();
   await f.run("create start");
+  assert.match(await f.run("take safety-line premature"), /not been discovered/);
+  assert.match(await f.run("examine safety-line hidden"), /Nothing relevant/);
+  assert.match(await f.run("examine cleat clue1"), /safety-line/);
   const first = await f.run("take safety-line item1");
   assert.match(first, /Collected safety-line/);
   assert.equal(await f.run("take safety-line item1"), first);
   assert.match(await f.run("take safety-line item2"), /not available/);
   assert.match(await f.run("inventory"), /safety-line/);
-  assert.match(await f.run("examine hand-mirror"), /Nothing relevant/);
+  assert.match(await f.run("examine hand-mirror examine1"), /Nothing relevant/);
   assert.match(await f.run("move tavern move1"), /Crooked Compass/);
-  assert.match(await f.run("examine hand-mirror"), /hand-mirror/);
+  assert.match(await f.run("examine hand-mirror examine2"), /hand-mirror/);
   assert.match(await f.run("take hand-mirror item3"), /Collected/);
   const saved = [...f.rows.values()][0];
   assert.equal(saved.world.items["hand-mirror"], saved.owner);
@@ -75,10 +78,11 @@ test("unique item pickup and receipt replay cannot claim twice; wrong-room exami
 test("CAS race for one item yields one accepted receipt and no lost update", async () => {
   const f = fixture();
   await f.run("create start");
+  await f.run("examine cleat clue1");
   const [a, b] = await Promise.all([f.run("take safety-line race-a"), f.run("take safety-line race-b")]);
   assert.equal([a, b].filter((result) => result.startsWith("Collected")).length, 1);
   assert.equal([a, b].filter((result) => result.includes("not available")).length, 1);
   const saved = [...f.rows.values()][0];
   assert.equal(saved.inventory[saved.owner].length, 1);
-  assert.equal(saved.world.journal.length, 1);
+  assert.equal(saved.world.journal.length, 2); // examination and the one accepted pickup
 });

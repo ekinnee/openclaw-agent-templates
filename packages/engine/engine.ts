@@ -34,7 +34,7 @@ function parse(args: string | undefined): Command | null {
   if (words[0] === "look" && words.length === 1) return { verb: "look" };
   if (words[0] === "inventory" && words.length === 1) return { verb: "inventory" };
   if (words[0] === "recap" && words.length === 1) return { verb: "recap" };
-  if (words[0] === "examine" && words.length === 2 && token.test(words[1])) return { verb: "examine", target: words[1] };
+  if (words[0] === "examine" && words.length === 3 && token.test(words[1]) && token.test(words[2])) return { verb: "examine", target: words[1], requestId: words[2] };
   if (words[0] === "create" && words.length === 2 && token.test(words[1])) return { verb: "create", requestId: words[1] };
   if (words[0] === "approve" && words.length === 3 && words[1].length <= 256 && words[1].trim() && token.test(words[2]))
     return { verb: "approve", sender: words[1], requestId: words[2] };
@@ -86,8 +86,38 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> | inventory | recap | open <pump-hatch|tower-stair> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | open <pump-hatch|tower-stair> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
+function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
+function validGame(game: Game, key: string): boolean {
+  if (!record(game) || !record(game.players) || !record(game.approved) || !record(game.receipts) ||
+      !record(game.inventory) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) ||
+      !Array.isArray(game.world.journal) || game.world.journal.length > MAX_RECEIPTS ||
+      !game.world.journal.every((entry) => typeof entry === "string" && entry.length <= 256) ||
+      typeof game.id !== "string" || !/^[0-9a-f-]{36}$/.test(game.id) ||
+      typeof game.agentId !== "string" || typeof game.sessionId !== "string" || typeof game.destination !== "string" ||
+      key !== JSON.stringify([game.agentId, game.sessionId, game.destination]) ||
+      !Number.isSafeInteger(game.version) || game.version < 1 || game.version > MAX_RECEIPTS ||
+      Object.keys(game.receipts).length !== game.version || Object.keys(game.players).length > MAX_PLAYERS ||
+      Object.keys(game.approved).length > MAX_PLAYERS || Buffer.byteLength(JSON.stringify(game), "utf8") > MAX_GAME_BYTES) return false;
+  for (const [actor, room] of Object.entries(game.players)) {
+    if (!roomId(room) || game.approved[actor] !== true || !Array.isArray(game.inventory[actor]) ||
+        !game.inventory[actor].every(itemId)) return false;
+  }
+  if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
+      ["pumpOpen", "stairOpen", "lineFound"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
+  for (const item of ["safety-line", "hand-mirror", "glass-prism"] as ItemId[]) {
+    const holder = game.world.items[item];
+    if (typeof holder !== "string" || (!roomId(holder) && !Object.hasOwn(game.players, holder))) return false;
+    const ownedBy = Object.entries(game.inventory).filter(([, inventory]) => Array.isArray(inventory) && inventory.includes(item));
+    if (roomId(holder) ? ownedBy.length !== 0 : ownedBy.length !== 1 || ownedBy[0][0] !== holder) return false;
+  }
+  for (const receipt of Object.values(game.receipts)) {
+    if (!record(receipt) || typeof receipt.fingerprint !== "string" || typeof receipt.text !== "string" ||
+        receipt.fingerprint.length > 512 || receipt.text.length > 4096) return false;
+  }
+  return true;
+}
 
 /** Pure owner over an action-bound V2 state store; a conflict is the only retryable outcome. */
 export async function runCommand(ctx: PluginCommandContext, store: Store): Promise<string> {
@@ -112,20 +142,18 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
     const current = observed.value;
     if (current && !bound(current, id, target)) return denied;
     // A prior prototype's row is not a valid world save; never silently reset it.
-    if (current && (!current.world || !current.inventory || !current.world.items || !current.world.flags || !Array.isArray(current.world.journal) ||
-        (Object.hasOwn(current.players, id.actor) && !roomId(current.players[id.actor])))) return denied;
+    if (current && !validGame(current, key)) return denied;
     if (cmd.verb === "look") {
       if (!current || !Object.hasOwn(current.players, id.actor)) return denied;
       ctx.assertOwnerCurrent!();
       return describe(current, id.actor);
     }
-    if (cmd.verb === "inventory" || cmd.verb === "recap" || cmd.verb === "examine") {
+    if (cmd.verb === "inventory" || cmd.verb === "recap") {
       if (!current || !Object.hasOwn(current.players, id.actor)) return denied;
       if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
       ctx.assertOwnerCurrent!();
       if (cmd.verb === "inventory") return `Inventory: ${current.inventory[id.actor]?.join(", ") || "empty"}. Version ${current.version}.`;
       if (cmd.verb === "recap") return `Public journal: ${current.world.journal.slice(-8).join("; ") || "no discoveries"}. Version ${current.version}.`;
-      return `${examine(current.world, current.players[id.actor], cmd.target!) ?? "Nothing relevant is visible here."} Version ${current.version}.`;
     }
     const rkey = receiptKey(id.actor, cmd.requestId!);
     const prior = current?.receipts[rkey];
@@ -165,10 +193,21 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
         const alreadyThere = current.players[id.actor] === cmd.direction;
         next = { ...current, players: { ...current.players, [id.actor]: cmd.direction! }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `${alreadyThere ? "Already there." : "Moved."} ${describe(next, id.actor)}`;
+      } else if (cmd.verb === "examine") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        const at = current.players[id.actor];
+        const found = examine(current.world, at, cmd.target!);
+        if (!found) return "Nothing relevant is visible here.";
+        const flags = { ...current.world.flags };
+        if (at === "quay" && cmd.target === "cleat") flags.lineFound = true;
+        const journal = [...current.world.journal, `An object was examined in ${at}.`];
+        next = { ...current, world: { ...current.world, flags, journal }, receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `${found} Version ${next.version}.`;
       } else if (cmd.verb === "take") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const item = cmd.target as ItemId;
         if (current.world.items[item] !== current.players[id.actor]) return "That item is not available here.";
+        if (item === "safety-line" && !current.world.flags.lineFound) return "That item has not been discovered.";
         next = { ...current, world: { ...current.world, items: { ...current.world.items, [item]: id.actor }, journal: [...current.world.journal, `An item was collected in ${current.players[id.actor]}.`] },
           inventory: { ...current.inventory, [id.actor]: [...(current.inventory[id.actor] ?? []), item] }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Collected ${item}. Version ${next.version}.`;

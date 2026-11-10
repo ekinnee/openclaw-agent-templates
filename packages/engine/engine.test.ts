@@ -99,13 +99,14 @@ test("capacity, CAS conflicts, and missing CAS refuse mutation", async () => {
   assert.match(await runCommand(f.context("create retry"), f.store), /Created game/);
   const key = [...f.rows.keys()][0];
   const game = f.rows.get(key);
+  // Refuse malformed or altered persisted rows rather than silently ignoring them.
   for (let n = 0; n < 63; n++) game.receipts[`receipt-${n}`] = { fingerprint: "test", text: "test" };
-  assert.match(await runCommand(f.context("move market over-cap"), f.store), /capacity/);
+  assert.match(await runCommand(f.context("move market over-cap"), f.store), /unavailable/);
   assert.equal(f.rows.get(key).version, 1);
   assert.match(await runCommand(f.context("look"), { observe: f.store.observe } as Store), /unavailable/);
   game.receipts = {};
   game.receipts.huge = { fingerprint: "test", text: "x".repeat(65536) };
-  assert.match(await runCommand(f.context("move market bytes"), f.store), /capacity/);
+  assert.match(await runCommand(f.context("move market bytes"), f.store), /unavailable/);
 });
 
 test("owner approval has a fixed four-actor capacity", async () => {
