@@ -98,6 +98,10 @@ The previous disposable solo script was updated to take the tracked Market crate
 
 Record commands, revisions, sanitized output and reviewer findings below as tests are completed; do not substitute fixtures or mock identities for live integration evidence.
 
+### Optional Archive mixed-band item cost
+
+After the solo Pump commit `db82d8c`, the Archive shelf's 7–9 branch may now leave an already-carried nonessential item on the Archive shelf instead of spending 1 Resolve. The tracked item changes owner/location with the roll, public journal and receipt in one CAS effect, remains recoverable in the Archive, and is not taken on a clean or failed roll. The essential safety line cannot be selected. The owner must choose the item or the Resolve cost before rolling; a repeated request ID replays the same receipt. The 46 engine/browser fixture tests passed with temporary local OpenClaw SDK links, and Template validation passed against OpenClaw 2026.11.2. The links were removed. These are source/fixture checks, not an installed GM/model turn, rendered dashboard, Gateway restart, or two-person proof. Record the final commit and PR head separately after publication.
+
 ### Solo Pump House command verification
 
 On `feat/campaign-keeper` from `1ca5e56`, `npm test` in `packages/engine` passed all 43 focused tests, including two browser fixtures. Temporary links resolved the local OpenClaw 2026.11.1 SDK and `tsx` and were removed after the run. The new cases cover Suri's offer, all Grit outcome bands, the mixed-band choice, surge cap, zero-Resolve retreat and recovery, a lost response after a real roll, and CAS conflicts. Independent review of the engine and test diff found no actionable P0–P2 issues.
