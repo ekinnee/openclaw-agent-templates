@@ -12,12 +12,12 @@ export type RoomId = keyof typeof rooms;
 export type ItemId = "safety-line" | "hand-mirror" | "glass-prism" | "weather-crate" | "colored-twine";
 export const itemIds: readonly ItemId[] = ["safety-line", "hand-mirror", "glass-prism", "weather-crate", "colored-twine"];
 export type ClueId = "plateRead" | "marketPatternHeard" | "archivePlanRead" | "balanceKnown" | "stakesKnown";
-export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean; boatsWarned: boolean; marketWarned: boolean; evacuated: boolean; archiveShelfSettled: boolean }; clues: Record<ClueId, boolean>; surge: number; ending: "none" | "balanced" | "diverted" | "shuttered" | "deferred"; dial: "unset" | "balanced" | "diverted" | "shut"; beacon: "dark" | "lit"; journal: string[] };
+export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean; boatsWarned: boolean; marketWarned: boolean; evacuated: boolean; archiveShelfSettled: boolean }; clues: Record<ClueId, boolean>; surge: number; reflector: "none" | "glass-prism" | "hand-mirror" | "improvised"; ending: "none" | "balanced" | "diverted" | "shuttered" | "deferred"; dial: "unset" | "balanced" | "diverted" | "shut"; beacon: "dark" | "lit"; journal: string[] };
 export function initialWorld(): WorldState {
   return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive", "weather-crate": "market", "colored-twine": "market" },
     flags: { pumpOpen: false, stairOpen: false, lineFound: false, pumpBraced: false, boatsWarned: false, marketWarned: false, evacuated: false, archiveShelfSettled: false },
     clues: { plateRead: false, marketPatternHeard: false, archivePlanRead: false, balanceKnown: false, stakesKnown: false },
-    surge: 0, ending: "none", dial: "unset", beacon: "dark", journal: [] };
+    surge: 0, reflector: "none", ending: "none", dial: "unset", beacon: "dark", journal: [] };
 }
 export function roomId(value: string): value is RoomId { return Object.hasOwn(rooms, value); }
 export function itemId(value: string): value is ItemId { return itemIds.includes(value as ItemId); }

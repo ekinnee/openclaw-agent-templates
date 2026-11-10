@@ -27,7 +27,7 @@ type Game = {
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "talk" | "open" | "brace" | "recap" | "roll" | "risk" | "rest" | "finish" | "warn"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "talk" | "open" | "brace" | "fit" | "recap" | "roll" | "risk" | "rest" | "finish" | "warn"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -53,6 +53,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "open", target: words[1], requestId: words[2] };
   if (words[0] === "brace" && words.length === 3 && words[1] === "pump-lever" && token.test(words[2]))
     return { verb: "brace", target: words[1], requestId: words[2] };
+  if (words[0] === "fit" && words.length === 3 && ["glass-prism", "hand-mirror", "improvised"].includes(words[1]) && token.test(words[2]))
+    return { verb: "fit", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
     return { verb: "roll", target: words[1], requestId: words[2] };
   if (words[0] === "risk" && words.length === 5 && words[1] === "archive-shelf" && ["grit", "wits"].includes(words[2]) && ["quay", "tavern"].includes(words[3]) && token.test(words[4]))
@@ -103,7 +105,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -137,6 +139,7 @@ function validGame(game: Game, key: string): boolean {
       !["none", "balanced", "diverted", "shuttered", "deferred"].includes(game.world.ending) ||
       !["unset", "balanced", "diverted", "shut"].includes(game.world.dial) ||
       !["dark", "lit"].includes(game.world.beacon) ||
+      !["none", "glass-prism", "hand-mirror", "improvised"].includes(game.world.reflector) ||
       !Number.isInteger(game.world.surge) || game.world.surge < 0 || game.world.surge > 2 ||
       !game.world.journal.every((entry) => typeof entry === "string" && entry.length <= 256) ||
       typeof game.id !== "string" || !/^[0-9a-f-]{36}$/.test(game.id) ||
@@ -328,6 +331,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         const at = current.players[id.actor];
         if (!current.world.clues.stakesKnown) return "Learn the consequences from Mara, the survey plate, or the Archive plan before choosing an ending.";
         if (cmd.target !== "deferred" && at !== "tower") return "Operate the ending controls from Beacon Tower.";
+        if (["balanced", "diverted"].includes(cmd.target!) && current.world.reflector === "none") return "Fit a reflector at Beacon Tower before lighting the beacon.";
         if (cmd.target === "shuttered" && !current.world.flags.boatsWarned) return "Warn the boats before shutting the beacon.";
         if (cmd.target === "deferred" && !current.world.flags.evacuated) return "Organize warning and evacuation before deferring repairs.";
         // Mara can help fit an improvised reflector: neither the prism nor mirror is a required quest key.
@@ -362,6 +366,14 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
           journal: [...current.world.journal, "The pump lever was secured with the weather crate."] },
           receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Braced the pump lever. Version ${next.version}.`;
+      } else if (cmd.verb === "fit") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        if (current.players[id.actor] !== "tower") return "Fit the reflector at Beacon Tower.";
+        if (current.world.reflector !== "none") return "The lens already has a reflector.";
+        if (cmd.target !== "improvised" && current.world.items[cmd.target as ItemId] !== id.actor) return "You do not carry that reflector.";
+        if (cmd.target === "improvised" && !current.world.clues.stakesKnown) return "Ask Mara about the controls before improvising a reflector.";
+        next = { ...current, world: { ...current.world, reflector: cmd.target as WorldState["reflector"], journal: [...current.world.journal, "A reflector was fitted at Beacon Tower."] }, receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Fitted ${cmd.target} at Beacon Tower. Version ${next.version}.`;
       } else {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];

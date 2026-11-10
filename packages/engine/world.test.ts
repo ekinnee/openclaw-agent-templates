@@ -133,6 +133,8 @@ test("ending is an explicit committed choice, cannot be rewritten, and updates a
   assert.match(await f.run("talk mara stakes"), /DIVERT spares the Quay/);
   assert.match(await f.run("finish balanced early"), /Beacon Tower/);
   assert.match(await f.run("move tower travel"), /Beacon Tower/);
+  assert.match(await f.run("finish balanced no-reflector"), /Fit a reflector/);
+  assert.match(await f.run("fit improvised lens"), /Fitted improvised/);
   const ending = await f.run("finish balanced final");
   assert.match(ending, /Committed balanced ending/);
   assert.equal(await f.run("finish balanced final"), ending);
@@ -173,8 +175,23 @@ test("deferred and shuttered endings require prior warning, while diversion comm
   assert.match(await diverted.run("examine dial insufficient"), /marked/);
   assert.match(await diverted.run("finish diverted still-uninformed"), /Learn the consequences/);
   await diverted.run("talk mara stakes");
+  assert.match(await diverted.run("fit improvised lens"), /Fitted improvised/);
   assert.match(await diverted.run("finish diverted final"), /lost stock/);
   assert.equal([...diverted.rows.values()][0].world.beacon, "lit");
+});
+
+test("real reflector must be in the actor inventory; improvised route stays available", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move tower go1");
+  assert.match(await f.run("fit glass-prism absent"), /do not carry/);
+  assert.match(await f.run("fit improvised uninformed"), /Ask Mara/);
+  await f.run("talk mara stakes");
+  assert.match(await f.run("fit improvised fitted"), /Fitted improvised/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.reflector, "improvised");
+  assert.equal(await f.run("fit improvised fitted"), saved.receipts[JSON.stringify([saved.owner, "fitted"])].text);
+  assert.match(await f.run("fit glass-prism second"), /already has/);
 });
 
 test("a committed write with a lost reply reconciles by the same request ID without a second effect", async () => {
