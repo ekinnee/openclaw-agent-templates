@@ -55,8 +55,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "brace", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
     return { verb: "roll", target: words[1], requestId: words[2] };
-  if (words[0] === "risk" && words.length === 4 && words[1] === "archive-shelf" && ["grit", "wits"].includes(words[2]) && token.test(words[3]))
-    return { verb: "risk", target: `${words[1]}:${words[2]}`, requestId: words[3] };
+  if (words[0] === "risk" && words.length === 5 && words[1] === "archive-shelf" && ["grit", "wits"].includes(words[2]) && ["quay", "tavern"].includes(words[3]) && token.test(words[4]))
+    return { verb: "risk", target: `${words[1]}:${words[2]}:${words[3]}`, requestId: words[4] };
   if (words[0] === "rest" && words.length === 2 && token.test(words[1]))
     return { verb: "rest", requestId: words[1] };
   if (words[0] === "finish" && words.length === 3 && ["balanced", "diverted", "shuttered", "deferred"].includes(words[1]) && token.test(words[2]))
@@ -103,7 +103,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -143,12 +143,17 @@ function validGame(game: Game, key: string): boolean {
       typeof game.agentId !== "string" || typeof game.sessionId !== "string" || typeof game.destination !== "string" ||
       key !== JSON.stringify([game.agentId, game.sessionId, game.destination]) ||
       !Number.isSafeInteger(game.version) || game.version < 1 || game.version > MAX_RECEIPTS ||
-      Object.keys(game.receipts).length !== game.version || Object.keys(game.players).length > MAX_PLAYERS ||
+      Object.keys(game.receipts).length !== game.version || Object.keys(game.players).length < 1 || Object.keys(game.players).length > MAX_PLAYERS ||
       Object.keys(game.approved).length > MAX_PLAYERS || Buffer.byteLength(JSON.stringify(game), "utf8") > MAX_GAME_BYTES) return false;
+  if (typeof game.owner !== "string" || !Object.hasOwn(game.players, game.owner) || game.approved[game.owner] !== true ||
+      Object.keys(game.inventory).length !== Object.keys(game.players).length ||
+      Object.keys(game.attributes).length !== Object.keys(game.players).length ||
+      Object.keys(game.resolve).length !== Object.keys(game.players).length ||
+      Object.keys(game.rests).length !== Object.keys(game.players).length) return false;
   for (const [actor, room] of Object.entries(game.players)) {
     if (!roomId(room) || game.approved[actor] !== true || !validAttributes(game.attributes[actor]) ||
         !Number.isInteger(game.resolve[actor]) || game.resolve[actor] < 0 || game.resolve[actor] > 6 || !Array.isArray(game.inventory[actor]) ||
-        !game.inventory[actor].every(itemId)) return false;
+        !game.inventory[actor].every(itemId) || new Set(game.inventory[actor]).size !== game.inventory[actor].length) return false;
     if (!record(game.rests[actor]) || typeof game.rests[actor].before !== "boolean" || typeof game.rests[actor].after !== "boolean") return false;
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
@@ -290,24 +295,27 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "archive") return "The shelf hazard is not here.";
         if (current.world.flags.archiveShelfSettled) return "The shelf hazard is already settled.";
-        const result = roll(cmd.target!.split(":")[1] as Attribute, current.attributes[id.actor], die);
+        const [, attribute, retreatRoom] = cmd.target!.split(":");
+        const result = roll(attribute as Attribute, current.attributes[id.actor], die);
         const cost = result.band === "cost" ? 1 : 0;
         const strain = applyResolve(current.resolve[id.actor], cost);
         const surge = result.band === "complication" ? Math.min(2, current.world.surge + 1) : current.world.surge;
         const consequence = result.band === "clean" ? "The satchel is saved cleanly." : result.band === "cost"
-          ? "The satchel is saved, but the effort costs 1 Resolve." : "Water takes the satchel, exposing a maintenance route; the surge rises.";
+          ? "The satchel is saved, but the effort costs 1 Resolve." : current.world.surge === 2
+            ? "Water takes the satchel, exposing a maintenance route; supplies are soaked at high surge."
+            : "Water takes the satchel, exposing a maintenance route; the surge rises.";
         next = { ...current, resolve: { ...current.resolve, [id.actor]: strain.resolve },
-          players: strain.retreat ? { ...current.players, [id.actor]: "quay" } : { ...current.players },
+          players: strain.retreat ? { ...current.players, [id.actor]: retreatRoom as RoomId } : { ...current.players },
           world: { ...current.world, surge, flags: { ...current.world.flags, archiveShelfSettled: true },
             journal: [...current.world.journal, `The Archive shelf was settled. ${consequence}`] },
           receipts: { ...current.receipts }, version: current.version + 1 };
-        text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. ${consequence}${strain.retreat ? " Retreat to Lantern Quay; a breather can restore Resolve." : ""} Version ${next.version}.`;
+        text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. ${consequence}${strain.retreat ? ` Retreat to ${retreatRoom === "quay" ? "Lantern Quay" : "the Crooked Compass"}; a breather can restore Resolve.` : ""} Version ${next.version}.`;
         next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
       } else if (cmd.verb === "rest") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "tavern" && current.resolve[id.actor] !== 0) return "Rest at the Crooked Compass.";
         if (current.resolve[id.actor] === 6) return "Resolve is already full.";
-        const afterDiscovery = current.world.clues.archivePlanRead || current.world.clues.balanceKnown;
+        const afterDiscovery = current.world.clues.stakesKnown;
         const period = afterDiscovery ? "after" : "before";
         if (current.resolve[id.actor] !== 0 && current.rests[id.actor][period]) return "That Tavern rest has already been used.";
         const restored = Math.min(6, current.resolve[id.actor] + 2);
@@ -368,8 +376,9 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       }
     }
     // Prevent unbounded retained rows: reject before a receipt can be silently evicted.
-    if (Object.keys(next.receipts).length >= MAX_RECEIPTS) return "Receipt capacity reached; game requires maintenance.";
+    if (Object.keys(next.receipts).length > MAX_RECEIPTS) return "Receipt capacity reached; game requires maintenance.";
     next.receipts[rkey] ??= { fingerprint: fingerprint(cmd), text };
+    if (Object.keys(next.receipts).length > MAX_RECEIPTS) return "Receipt capacity reached; game requires maintenance.";
     if (Buffer.byteLength(JSON.stringify(next), "utf8") > MAX_GAME_BYTES) return "Game capacity reached; game requires maintenance.";
     ctx.assertOwnerCurrent!();
     if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;

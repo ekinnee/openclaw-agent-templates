@@ -236,11 +236,11 @@ test("optional Archive shelf check commits dice and cost together, and replays o
     channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread",
   }) as PluginCommandContext;
   let calls = 0;
-  const rolled = await runCommand(context("risk archive-shelf grit shelf1"), f.store, () => { calls++; return 3; });
+  const rolled = await runCommand(context("risk archive-shelf grit tavern shelf1"), f.store, () => { calls++; return 3; });
   assert.match(rolled, /3\+3 \+ 1 grit = 7: cost.*costs 1 Resolve/);
   assert.equal(calls, 2);
-  assert.equal(await runCommand(context("risk archive-shelf grit shelf1"), f.store, () => { throw Error("reroll"); }), rolled);
-  assert.match(await f.run("risk archive-shelf grit shelf2"), /already settled/);
+  assert.equal(await runCommand(context("risk archive-shelf grit tavern shelf1"), f.store, () => { throw Error("reroll"); }), rolled);
+  assert.match(await f.run("risk archive-shelf grit tavern shelf2"), /already settled/);
   const saved = [...f.rows.values()][0];
   assert.equal(saved.resolve[saved.owner], 5);
   assert.equal(saved.world.flags.archiveShelfSettled, true);
@@ -258,10 +258,27 @@ test("failed Archive shelf check reveals route and advances capped surge", async
   const context = (args: string) => ({ args, commandBody: `/ck ${args}`, isAuthorizedSender: true, senderIsOwner: true,
     assertOwnerCurrent: () => {}, getCurrentConversationBinding: async () => ({ bindingId: "approved", channel: "chat", accountId: "account", conversationId: "room", threadId: "thread" }),
     senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:room", sessionId: "game-one", channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread" }) as PluginCommandContext;
-  const result = await runCommand(context("risk archive-shelf wits shelf1"), f.store, () => 1);
+  const result = await runCommand(context("risk archive-shelf wits quay shelf1"), f.store, () => 1);
   assert.match(result, /complication.*maintenance route/);
   const saved = [...f.rows.values()][0];
   assert.equal(saved.world.surge, 1);
   assert.equal(saved.world.flags.archiveShelfSettled, true);
   assert.match(await f.run("examine harbor-plan clue1"), /BALANCE/);
+});
+
+test("zero-Resolve Archive cost respects selected retreat room and breather", async () => {
+  const f = fixture();
+  await f.run("create start"); await f.run("move tower go1"); await f.run("open tower-stair stair1"); await f.run("move archive go2");
+  const saved = [...f.rows.values()][0];
+  saved.resolve[saved.owner] = 1;
+  const ctx = (args: string) => ({ args, commandBody: `/ck ${args}`, isAuthorizedSender: true, senderIsOwner: true,
+    assertOwnerCurrent: () => {}, getCurrentConversationBinding: async () => ({ bindingId: "approved", channel: "chat", accountId: "account", conversationId: "room", threadId: "thread" }),
+    senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:room", sessionId: "game-one", channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread" }) as PluginCommandContext;
+  const result = await runCommand(ctx("risk archive-shelf grit tavern shelf1"), f.store, () => 3);
+  assert.match(result, /Retreat to the Crooked Compass/);
+  const after = [...f.rows.values()][0];
+  assert.equal(after.players[after.owner], "tavern");
+  assert.equal(after.resolve[after.owner], 0);
+  assert.match(await f.run("rest breather"), /Recovered to 2 Resolve/);
+  assert.equal([...f.rows.values()][0].rests[after.owner].before, false);
 });
