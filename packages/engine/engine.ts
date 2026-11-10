@@ -5,10 +5,11 @@ import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sd
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import type { PluginSessionActionContext } from "openclaw/plugin-sdk/plugin-entry";
 import { canMove, examine, initialWorld, itemId, roomId, viewRoom, type ItemId, type RoomId, type WorldState } from "./world.js";
+import { roll, validAttributes, type Attribute, type Attributes, type Roll } from "./rules.js";
 
 type Store = PluginStateKeyedStore<Game, 2>;
 type Position = RoomId;
-type Receipt = { fingerprint: string; text: string };
+type Receipt = { fingerprint: string; text: string; roll?: Roll };
 type Game = {
   id: string;
   agentId: string;
@@ -18,12 +19,14 @@ type Game = {
   owner: string;
   approved: Record<string, true>;
   players: Record<string, Position>;
+  attributes: Record<string, Attributes>;
+  resolve: Record<string, number>;
   inventory: Record<string, ItemId[]>;
   world: WorldState;
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "recap"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "recap" | "roll"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -46,6 +49,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "take", target: words[1], requestId: words[2] };
   if (words[0] === "open" && words.length === 3 && (words[1] === "pump-hatch" || words[1] === "tower-stair") && token.test(words[2]))
     return { verb: "open", target: words[1], requestId: words[2] };
+  if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
+    return { verb: "roll", target: words[1], requestId: words[2] };
   return null;
 }
 
@@ -86,12 +91,12 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | open <pump-hatch|tower-stair> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
   if (!record(game) || !record(game.players) || !record(game.approved) || !record(game.receipts) ||
-      !record(game.inventory) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) ||
+      !record(game.inventory) || !record(game.attributes) || !record(game.resolve) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) ||
       !Array.isArray(game.world.journal) || game.world.journal.length > MAX_RECEIPTS ||
       !game.world.journal.every((entry) => typeof entry === "string" && entry.length <= 256) ||
       typeof game.id !== "string" || !/^[0-9a-f-]{36}$/.test(game.id) ||
@@ -101,7 +106,8 @@ function validGame(game: Game, key: string): boolean {
       Object.keys(game.receipts).length !== game.version || Object.keys(game.players).length > MAX_PLAYERS ||
       Object.keys(game.approved).length > MAX_PLAYERS || Buffer.byteLength(JSON.stringify(game), "utf8") > MAX_GAME_BYTES) return false;
   for (const [actor, room] of Object.entries(game.players)) {
-    if (!roomId(room) || game.approved[actor] !== true || !Array.isArray(game.inventory[actor]) ||
+    if (!roomId(room) || game.approved[actor] !== true || !validAttributes(game.attributes[actor]) ||
+        !Number.isInteger(game.resolve[actor]) || game.resolve[actor] < 0 || game.resolve[actor] > 6 || !Array.isArray(game.inventory[actor]) ||
         !game.inventory[actor].every(itemId)) return false;
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
@@ -120,7 +126,7 @@ function validGame(game: Game, key: string): boolean {
 }
 
 /** Pure owner over an action-bound V2 state store; a conflict is the only retryable outcome. */
-export async function runCommand(ctx: PluginCommandContext, store: Store): Promise<string> {
+export async function runCommand(ctx: PluginCommandContext, store: Store, die?: () => number): Promise<string> {
   const id = identity(ctx);
   if (!id || !store.observe || !store.compareAndApply || !ctx.getCurrentConversationBinding) return denied;
   const cmd = parse(ctx.args);
@@ -170,7 +176,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
       next = {
         id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
         sessionKey: id.sessionKey, destination: target, owner: id.actor,
-        approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
+        approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, attributes: { [id.actor]: { grit: 1, wits: 2, charm: 0 } },
+        resolve: { [id.actor]: 6 }, inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
       };
       text = `Created game ${next.id}. ${describe(next, id.actor)}`;
     } else {
@@ -185,7 +192,10 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
         if (cmd.gameId !== current.id) return denied;
         if (!Object.hasOwn(current.approved, id.actor)) return denied;
         if (!Object.hasOwn(current.players, id.actor) && Object.keys(current.players).length >= MAX_PLAYERS) return "Game is full.";
-        next = { ...current, players: { ...current.players, [id.actor]: current.players[id.actor] ?? "quay" }, inventory: { ...current.inventory, [id.actor]: current.inventory[id.actor] ?? [] }, receipts: { ...current.receipts }, version: current.version + 1 };
+        next = { ...current, players: { ...current.players, [id.actor]: current.players[id.actor] ?? "quay" },
+          attributes: { ...current.attributes, [id.actor]: current.attributes[id.actor] ?? { grit: 1, wits: 2, charm: 0 } },
+          resolve: { ...current.resolve, [id.actor]: current.resolve[id.actor] ?? 6 },
+          inventory: { ...current.inventory, [id.actor]: current.inventory[id.actor] ?? [] }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Joined game ${next.id}. ${describe(next, id.actor)}`;
       } else if (cmd.verb === "move") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
@@ -211,6 +221,12 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
         next = { ...current, world: { ...current.world, items: { ...current.world.items, [item]: id.actor }, journal: [...current.world.journal, `An item was collected in ${current.players[id.actor]}.`] },
           inventory: { ...current.inventory, [id.actor]: [...(current.inventory[id.actor] ?? []), item] }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Collected ${item}. Version ${next.version}.`;
+      } else if (cmd.verb === "roll") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        const result = roll(cmd.target as Attribute, current.attributes[id.actor], die);
+        next = { ...current, receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. Version ${next.version}. No consequence committed.`;
+        next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
       } else {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];
@@ -224,7 +240,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
     }
     // Prevent unbounded retained rows: reject before a receipt can be silently evicted.
     if (Object.keys(next.receipts).length >= MAX_RECEIPTS) return "Receipt capacity reached; game requires maintenance.";
-    next.receipts[rkey] = { fingerprint: fingerprint(cmd), text };
+    next.receipts[rkey] ??= { fingerprint: fingerprint(cmd), text };
     if (Buffer.byteLength(JSON.stringify(next), "utf8") > MAX_GAME_BYTES) return "Game capacity reached; game requires maintenance.";
     ctx.assertOwnerCurrent!();
     if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;

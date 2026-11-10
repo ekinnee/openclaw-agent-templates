@@ -86,3 +86,22 @@ test("CAS race for one item yields one accepted receipt and no lost update", asy
   assert.equal(saved.inventory[saved.owner].length, 1);
   assert.equal(saved.world.journal.length, 2); // examination and the one accepted pickup
 });
+
+test("a committed roll replays exactly without calling randomness again", async () => {
+  const f = fixture();
+  await f.run("create start");
+  const ctx = (args: string) => ({
+    args, commandBody: `/ck ${args}`, isAuthorizedSender: true, senderIsOwner: true, assertOwnerCurrent: () => {},
+    getCurrentConversationBinding: async () => ({ bindingId: "approved", channel: "chat", accountId: "account", conversationId: "room", threadId: "thread" }),
+    senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:room", sessionId: "game-one",
+    channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread",
+  }) as PluginCommandContext;
+  let calls = 0;
+  const first = await runCommand(ctx("roll wits risky"), f.store, () => { calls++; return 3; });
+  assert.match(first, /3\+3 \+ 2 wits = 8: cost/);
+  assert.equal(await runCommand(ctx("roll wits risky"), f.store, () => { throw Error("rerolled"); }), first);
+  assert.equal(calls, 2);
+  assert.match(await runCommand(ctx("roll grit risky"), f.store), /already used/);
+  const saved = [...f.rows.values()][0];
+  assert.deepEqual(saved.receipts[JSON.stringify([saved.owner, "risky"])].roll.dice, [3, 3]);
+});
