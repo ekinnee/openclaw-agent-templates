@@ -98,6 +98,17 @@ test("an unscripted safety-line lever proposal maps to a validated item-specific
   assert.match(await f.run("move archive enter"), /Flooded Archive/);
 });
 
+test("unsupported improvised intent cannot mutate state by narration text", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move market market");
+  await f.run("move pump pump");
+  const before = structuredClone([...f.rows.values()][0]);
+  assert.match(await f.run("tie random rope to lever unsupported"), /Usage:/);
+  assert.match(await f.run("brace pump-lever random-rope unsupported"), /Usage:/);
+  assert.deepEqual([...f.rows.values()][0], before);
+});
+
 test("safety-line brace cannot claim absent or undiscovered gear", async () => {
   const f = fixture();
   await f.run("create start");
