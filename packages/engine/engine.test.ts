@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runCommand, registerEngine } from "./engine.ts";
+import { runCommand, registerEngine, readGameStats } from "./engine.ts";
 import type { PluginCommandContext } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 
@@ -13,6 +13,7 @@ function fixture() {
   let ownerCurrent = true;
   const store = {
     async observe(key: string) { return { value: rows.get(key), comparison: String(revisions.get(key) ?? 0) }; },
+    async entries() { return [...rows].map(([key, value]) => ({ key, value, createdAt: 1 })); },
     async compareAndApply(key: string, comparison: string, intent: any) {
       if (comparison !== String(revisions.get(key) ?? 0)) return { status: "conflict", current: await this.observe(key) };
       rows.set(key, structuredClone(intent.value));
@@ -24,7 +25,7 @@ function fixture() {
     args, commandBody: `/ck ${args}`, isAuthorizedSender: true, senderIsOwner: true,
     assertOwnerCurrent: () => { if (!ownerCurrent) throw Error("owner no longer current"); },
     getCurrentConversationBinding: async () => currentBinding,
-    senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:chat:room",
+    senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:chat:room", sessionId: "incarnation-a",
     channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread", ...patch,
   }) as PluginCommandContext;
   return { rows, revisions, store, context, binding, setBinding: (v: any) => { currentBinding = v; }, revoke: () => { ownerCurrent = false; } };
@@ -34,7 +35,7 @@ test("owner authority and approved destination are mandatory", async () => {
   const f = fixture();
   for (const patch of [
     { isAuthorizedSender: false }, { senderIsOwner: false }, { assertOwnerCurrent: undefined },
-    { senderId: undefined }, { agentId: undefined }, { sessionKey: undefined },
+    { senderId: undefined }, { agentId: undefined }, { sessionKey: undefined }, { sessionId: undefined },
     { accountId: undefined }, { from: undefined }, { to: undefined },
     { messageThreadId: undefined }, { getCurrentConversationBinding: undefined },
   ]) assert.match(await runCommand(f.context("create req1", patch), f.store), /unavailable/);
@@ -43,7 +44,7 @@ test("owner authority and approved destination are mandatory", async () => {
   f.setBinding(f.binding);
   assert.match(await runCommand(f.context("create req1"), f.store), /Created game/);
   assert.equal(f.rows.size, 1);
-  for (const patch of [{ agentId: "other" }, { sessionKey: "other" }, { channel: "other" },
+  for (const patch of [{ agentId: "other" }, { sessionKey: "other" }, { sessionId: "other" }, { channel: "other" },
     { accountId: "other" }, { messageThreadId: "other" }, { threadParentId: "other" },
     { from: "other" }, { to: "other" }])
     assert.match(await runCommand(f.context("look", patch), f.store), /unavailable/);
@@ -130,4 +131,67 @@ test("registration requests bounded reject-new storage and owner-capable gateway
   assert.equal(options.maxEntries, 64);
   assert.equal(options.overflowPolicy, "reject-new");
   assert.match((await definition.handler(f.context("look", { senderIsOwner: false }))).text, /unavailable/);
+});
+
+test("game incarnations use trusted sessionId, empty sessions count zero, retry does not double-count", async () => {
+  const f = fixture();
+  const access = () => ({ agentId: "keeper", sessionKey: "agent:keeper:chat:room",
+    client: { scopes: ["operator.read"], allowsAgent: (agent: string) => agent === "keeper",
+      isSharedGateway: () => false, assertCurrent: () => {} } });
+  const stats = () => readGameStats(access() as any, f.store, "keeper");
+  assert.equal((await stats())?.totalGames, 0);
+  const a = await runCommand(f.context("create first"), f.store);
+  assert.match(a, /Created game/);
+  assert.equal(await runCommand(f.context("create first"), f.store), a);
+  assert.equal((await stats())?.totalGames, 1);
+  assert.match(await runCommand(f.context("create next", { sessionId: "incarnation-b" }), f.store), /Created game/);
+  assert.equal((await stats())?.totalGames, 2);
+  assert.equal((await stats())?.acceptedActions, 2);
+  assert.match(await runCommand(f.context("move market m1"), f.store), /Moved/);
+  assert.equal((await stats())?.acceptedActions, 3);
+  assert.equal((await stats())?.games[0].playerCount, 1);
+  assert.deepEqual(Object.keys((await stats())!.games[0]).sort(), ["acceptedActions", "gameId", "label", "playerCount"]);
+});
+
+test("stats reject cross-agent readers, revoked roles, malformed rows, and capacity anomalies", async () => {
+  const f = fixture();
+  await runCommand(f.context("create first"), f.store);
+  const base = { agentId: "keeper", sessionKey: "agent:keeper:chat:room",
+    client: { scopes: ["operator.read"], allowsAgent: () => true, isSharedGateway: () => false,
+      assertCurrent: () => {} } };
+  const read = (ctx: any) => readGameStats(ctx, f.store, "keeper");
+  assert.equal(await read({ ...base, agentId: "other" }), null);
+  assert.equal(await read({ ...base, client: { ...base.client, allowsAgent: () => false } }), null);
+  assert.equal(await read({ ...base, client: { ...base.client, scopes: [] } }), null);
+  assert.equal(await read({ ...base, client: { ...base.client, isSharedGateway: undefined } }), null);
+  assert.equal(await read({ ...base, client: { ...base.client, assertCurrent: undefined } }), null);
+  assert.equal(await read({ ...base, client: { ...base.client, isSharedGateway: () => true } }), null);
+  const original = f.store.entries!.bind(f.store);
+  f.store.entries = async () => { const entries = await original(); base.client.allowsAgent = () => false; return entries; };
+  assert.equal(await read(base), null);
+  f.store.entries = original;
+  base.client.allowsAgent = () => true;
+  const key = [...f.rows.keys()][0];
+  const game = f.rows.get(key);
+  game.sessionId = "other";
+  assert.equal(await read(base), null);
+  game.sessionId = "incarnation-a";
+  f.store.entries = async () => Array.from({ length: 65 }, () => ({ key, value: game, createdAt: 1 }));
+  assert.equal(await read(base), null);
+});
+
+test("stats action is opt-in and read-scoped without registering a widget", async () => {
+  const f = fixture();
+  const registered: any[] = [];
+  const api = (enabled: boolean) => ({ pluginConfig: { dashboardEnabled: enabled, agentId: "keeper" },
+    session: { controls: { registerSessionAction: (action: any) => registered.push(action) } },
+    registerCommand: () => {}, runtime: { state: { openKeyedStoreV2: () => f.store } } });
+  registerEngine(api(false) as any);
+  assert.equal(registered.length, 0);
+  registerEngine(api(true) as any);
+  assert.equal(registered.length, 1);
+  assert.deepEqual(registered[0].requiredScopes, ["operator.read"]);
+  assert.equal((await registered[0].handler({ agentId: "keeper", sessionKey: "session", client: {
+    scopes: ["operator.read"], allowsAgent: () => true, isSharedGateway: () => false,
+    assertCurrent: () => {} } })).result.totalGames, 0);
 });

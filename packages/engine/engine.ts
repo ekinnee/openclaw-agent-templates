@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
+import type { PluginSessionActionContext } from "openclaw/plugin-sdk/plugin-entry";
 
 type Store = PluginStateKeyedStore<Game, 2>;
 type Position = "quay" | "market";
@@ -10,6 +11,7 @@ type Receipt = { fingerprint: string; text: string };
 type Game = {
   id: string;
   agentId: string;
+  sessionId: string;
   sessionKey: string;
   destination: string;
   owner: string;
@@ -42,10 +44,11 @@ function identity(ctx: PluginCommandContext) {
   // Until the SDK supplies one, even approved players cannot execute commands.
   if (!ctx.isAuthorizedSender || !ctx.senderIsOwner || !ctx.assertOwnerCurrent ||
       !ctx.senderId?.trim() || ctx.senderId.length > 256 || !ctx.agentId?.trim() ||
-      !ctx.sessionKey?.trim() || !ctx.channel?.trim() || !ctx.accountId?.trim()) return null;
+      !ctx.sessionKey?.trim() || !ctx.sessionId?.trim() || !ctx.channel?.trim() || !ctx.accountId?.trim()) return null;
   return {
     agentId: ctx.agentId,
     sessionKey: ctx.sessionKey,
+    sessionId: ctx.sessionId,
     channel: ctx.channel,
     accountId: ctx.accountId,
     actor: JSON.stringify([ctx.channel, ctx.accountId, ctx.senderId]),
@@ -65,7 +68,8 @@ function destination(ctx: PluginCommandContext, id: Identity, binding: Awaited<R
     ctx.from, ctx.to]);
 }
 function bound(game: Game, id: Identity, target: string): boolean {
-  return game.agentId === id.agentId && game.sessionKey === id.sessionKey && game.destination === target;
+  return game.agentId === id.agentId && game.sessionId === id.sessionId &&
+    game.sessionKey === id.sessionKey && game.destination === target;
 }
 function describe(game: Game, actor: string): string {
   const position = game.players[actor];
@@ -91,7 +95,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
   if (!target) return denied;
   // The namespace is retained. Agent and conversation identity are both part of the key,
   // and the stored binding must still match before any response or effect.
-  const key = JSON.stringify([id.agentId, id.sessionKey, target]);
+  const key = JSON.stringify([id.agentId, id.sessionId, target]);
   for (let attempts = 0; attempts < 5; attempts++) {
     ctx.assertOwnerCurrent!();
     const observed = await store.observe(key);
@@ -118,7 +122,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
     if (cmd.verb === "create") {
       if (current) return "A game already exists in this conversation.";
       next = {
-        id: randomUUID(), agentId: id.agentId, sessionKey: id.sessionKey, destination: target, owner: id.actor,
+        id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
+        sessionKey: id.sessionKey, destination: target, owner: id.actor,
         approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, receipts: {}, version: 1,
       };
       text = `Created game ${next.id}. ${describe(next, id.actor)}`;
@@ -162,7 +167,73 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
   return "Campaign Keeper: concurrent update; retry with the same request id.";
 }
 
-export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | "runtime">): void {
+const storeOptions = { namespace: "campaign-keeper-spike-v2", maxEntries: 64, overflowPolicy: "reject-new" } as const;
+
+/** This projection never includes binding, owner, sender IDs, positions or receipts. */
+export async function readGameStats(
+  ctx: PluginSessionActionContext, store: Pick<Store, "entries">, configuredAgent: string,
+): Promise<{ totalGames: number; activeGames: number; completedGames: number; acceptedActions: number;
+  games: { gameId: string; label: string; playerCount: number; acceptedActions: number }[];
+  asOfVersion: number; status: "complete" } | null> {
+  const client = ctx.client;
+  const permitted = () => Boolean(client?.assertCurrent && client?.allowsAgent && client?.isSharedGateway &&
+    client.scopes?.some((scope) => ["operator.read", "operator.write", "operator.admin"].includes(scope)) &&
+    client.allowsAgent(configuredAgent) &&
+    (!client.isSharedGateway() || client.scopes.includes("operator.admin")));
+  // The host resolves the session's agent. Never accept an agent ID in a payload as authority.
+  if (!configuredAgent || ctx.agentId !== configuredAgent || !ctx.sessionKey || !permitted()) return null;
+  client?.assertCurrent?.();
+  const rows = await store.entries();
+  client?.assertCurrent?.();
+  if (rows.length > storeOptions.maxEntries || !permitted()) return null;
+  const games: { gameId: string; label: string; playerCount: number; acceptedActions: number }[] = [];
+  const ids = new Set<string>();
+  for (const { key, value: game } of rows) {
+    // A legacy/malformed row makes the entire aggregate unavailable rather than falsely low.
+    if (!game || typeof game !== "object" || typeof game.id !== "string" ||
+        !/^[0-9a-f-]{36}$/.test(game.id) || ids.has(game.id) ||
+        game.agentId !== configuredAgent || typeof game.sessionId !== "string" || !game.sessionId ||
+        typeof game.sessionKey !== "string" || !game.sessionKey ||
+        typeof game.destination !== "string" || !game.destination ||
+        key !== JSON.stringify([game.agentId, game.sessionId, game.destination]) ||
+        !Number.isSafeInteger(game.version) || game.version < 1 ||
+        !game.receipts || typeof game.receipts !== "object" || Array.isArray(game.receipts) ||
+        Object.keys(game.receipts).length !== game.version || game.version > MAX_RECEIPTS ||
+        !game.players || typeof game.players !== "object" || Array.isArray(game.players) ||
+        Object.keys(game.players).length < 1 || Object.keys(game.players).length > MAX_PLAYERS ||
+        !permitted()) return null;
+    ids.add(game.id);
+    games.push({ gameId: game.id, label: `Game ${games.length + 1}`, playerCount: Object.keys(game.players).length,
+      acceptedActions: game.version });
+  }
+  client?.assertCurrent?.();
+  if (!permitted()) return null;
+  const asOfVersion = games.reduce((sum, game) => sum + game.acceptedActions, 0);
+  if (!Number.isSafeInteger(asOfVersion)) return null;
+  return { totalGames: games.length, activeGames: games.length, completedGames: 0,
+    acceptedActions: asOfVersion, games, asOfVersion, status: "complete" };
+}
+
+export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | "runtime" | "session" | "pluginConfig">): void {
+  // Explicit opt-in and an exact configured agent; no widget is exposed by this backend spike.
+  if (api.pluginConfig?.dashboardEnabled === true && typeof api.pluginConfig.agentId === "string" && api.pluginConfig.agentId.trim()) {
+    const agentId = api.pluginConfig.agentId;
+    api.session.controls.registerSessionAction({
+      id: "gameStats", description: "Read bounded Campaign Keeper game statistics", requiredScopes: ["operator.read"],
+      schema: { type: "object", additionalProperties: false, properties: {} },
+      handler: async (ctx) => {
+        try {
+          const store = api.runtime.state.openKeyedStoreV2<Game>(storeOptions, {
+            assertCurrent: () => ctx.client?.assertCurrent?.(),
+          });
+          const result = await readGameStats(ctx, store, agentId);
+          return result ? { result } : { ok: false, error: "Game statistics unavailable.", code: "UNAVAILABLE" };
+        } catch {
+          return { ok: false, error: "Game statistics unavailable.", code: "UNAVAILABLE" };
+        }
+      },
+    });
+  }
   api.registerCommand({
     name: "ck", description: "Campaign Keeper capability spike", acceptsArgs: true, requireAuth: true,
     requiredScopes: ["operator.write"],
@@ -172,7 +243,7 @@ export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | 
       if (!actor) return { text: denied };
       try {
         const store = api.runtime.state.openKeyedStoreV2<Game>(
-          { namespace: "campaign-keeper-spike-v2", maxEntries: 64, overflowPolicy: "reject-new" },
+          storeOptions,
           { assertCurrent: ctx.assertOwnerCurrent! },
         );
         return { text: await runCommand(ctx, store) };
