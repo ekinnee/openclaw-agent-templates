@@ -48,6 +48,10 @@ With Erick's explicit Campaign Keeper coding-route exception, the branch advance
 
 The Pump brace is an improvised solo route, not a full two-player handoff; numeric combat, complete NPC/encounter consequences, and themed generation remain future scope. A disposable real V2 store reopen does not prove an actual Gateway restart. A separate SDK inspection found a potential **model-mediated** version-2 tool route with `assertInvocationCurrent` for non-owner turns, but it has not been implemented or validated for Campaign Keeper; it cannot be treated as a cheap command equivalent. The public `/ck` command still has the non-owner after-await authority blocker.
 
+## Campaign Keeper command logic against disposable real V2 state
+
+An additional isolated probe invoked `runCommand` against the actual OpenClaw V2 keyed-state worker (not a mocked store) in a temporary directory. With a **synthetic owner context**, it accepted create, moved to Beacon Tower, and committed a `3+3+2=8` Wits roll. After closing the database and reopening a new store, `look` showed Beacon Tower and replay of the move and roll returned their original receipts without rerolling. The store held one game row at version 3. Output: `{"realV2":true,"commandCreate":true,"reopenRoom":"tower","sameRoll":true,"sameMove":true,"rows":1,"version":3}`; process exited 0 and the temporary state directory was removed. This is evidence for engine logic plus host storage persistence across a store reopen, **not** a Gateway restart, installed plugin, authenticated user, or multiplayer adapter test.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
