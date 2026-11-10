@@ -70,6 +70,10 @@ After review, `c114347` added room-scoped Pell/Suri/Mara conversations and commi
 
 The previous disposable solo script was updated to take the tracked Market crate before the Pump brace. The corrected **18-action** route on actual temporary V2 state reached the balanced ending, reopened its state and returned one completed game: `{"realV2":true,"actions":18,"ending":"balanced","beacon":"lit","reopened":true,"completedGames":1}`; process exited 0 and temporary state was removed. This remains synthetic owner/engine-only proof, not an installed GM/model or human playtest.
 
+## Offline plugin artifact proof (not installation)
+
+`openclaw plugins pack --root packages/engine --out /tmp/ck-engine-offline-proof.tgz --json` first refused because the package-local `esbuild` dev dependency was not resolvable. With temporary task-local links to the host's matching `openclaw` SDK and `esbuild`, the pack command succeeded and produced a **10,804-byte** archive with SHA-256 `d6996dabc6189c64f102032b7650b6fac2bbbfc0c8fb17e8f09af3b64987897b`. Inspecting its contents showed `package/dist/index.js`, immutable browser UI assets, manifest, and a package selector for `./dist/index.js` with OpenClaw peer `2026.11.2`. The temporary links were removed and the worktree remained clean. This is an offline import artifact for the **unreleased, owner-only spike**, not a ClawHub release, activation approval, installed plugin, Agent Template dependency, or live gameplay proof. Do not submit its returned activation request or expose the native UI on a shared Gateway without separate review and authority.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
