@@ -1,0 +1,10 @@
+{
+  "name": "campaign-keeper-engine-spike",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "openclaw": { "extensions": ["./index.ts"] },
+  "scripts": { "test": "node --import tsx --test ./engine.test.ts" },
+  "peerDependencies": { "openclaw": "2026.11.2" },
+  "devDependencies": { "tsx": "^4.20.0" }
+}

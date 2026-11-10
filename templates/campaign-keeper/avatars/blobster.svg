@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Campaign Keeper lantern creature</title>
+  <desc id="desc">Original round blue harbor spirit holding an amber lantern above dark waves.</desc>
+  <defs>
+    <linearGradient id="sea" x2="0" y2="1"><stop stop-color="#163854"/><stop offset="1" stop-color="#0c2437"/></linearGradient>
+    <linearGradient id="glow" x2="0" y2="1"><stop stop-color="#fff1a9"/><stop offset="1" stop-color="#edac57"/></linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="url(#sea)"/>
+  <circle cx="128" cy="106" r="70" fill="#63b6c4" stroke="#afe3d9" stroke-width="5"/>
+  <path d="M67 135q-15 24-5 48 18-12 32-7l14-37M189 135q15 24 5 48-18-12-32-7l-14-37" fill="#438ca7" stroke="#afe3d9" stroke-width="4" stroke-linejoin="round"/>
+  <ellipse cx="102" cy="105" rx="6" ry="9" fill="#163854"/><ellipse cx="152" cy="105" rx="6" ry="9" fill="#163854"/>
+  <path d="M116 127q12 9 24 0" fill="none" stroke="#163854" stroke-width="4" stroke-linecap="round"/>
+  <path d="M189 144q11-25 17-34" fill="none" stroke="#afe3d9" stroke-width="9" stroke-linecap="round"/>
+  <path d="M191 73h31l-3 39h-25z" fill="url(#glow)" stroke="#f4d08a" stroke-width="4"/>
+  <path d="M201 72v-8q0-7 6-7t6 7v8M185 117h43" fill="none" stroke="#f4d08a" stroke-width="5" stroke-linecap="round"/>
+  <path d="M22 196q28-15 53 0t53 0 53 0 53 0M22 215q28-15 53 0t53 0 53 0 53 0" fill="none" stroke="#66b5c4" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="55" cy="52" r="3" fill="#fff1a9"/><circle cx="79" cy="33" r="2" fill="#fff1a9"/><circle cx="176" cy="34" r="3" fill="#fff1a9"/>
+</svg>

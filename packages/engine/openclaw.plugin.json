@@ -1,0 +1,6 @@
+{
+  "id": "campaign-keeper-engine-spike",
+  "name": "Campaign Keeper engine spike",
+  "description": "Minimal conversation-bound command prototype; not a playable game",
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

@@ -1,0 +1,123 @@
+# The Lantern Below
+
+An original Campaign Keeper starter adventure for 1–4 characters. **GM/content source, not a player handout.** The final section defines a spoiler-safe player projection; the text above it must not be copied wholesale into player views. The coastal town of Bellwether has lost its beacon on a rising tide. An old bell sounds from beneath the harbor, though nobody is pulling its rope. The characters have until the next high surge to decide what to save, and what to risk. There is no clock measured in real time: advance the surge only on the explicitly listed consequential actions, never because a player is offline.
+
+## Start at the table
+
+Ask once: “Any tone or content preferences? The default is hopeful, non-graphic coastal mystery. You can say stop, fade out, or change tone at any time, without penalty.” Respect the answer. A player controls only their own character’s speech, choices and internal life; do not put words or motives in their mouth. Start promptly at Lantern Quay, with the beacon visibly dark and the bell sounding three uneven notes. Read its arrival text, then ask what they do. A ready-to-play character is a **Quay Runner** (Grit +1, Wits +2, Charm 0; six Resolve; old oilcloth coat and a pocket notebook; concept: knows the harbor paths). Other quick concepts: **Tidehand** (Grit +2, Wits +1, Charm 0) and **Lantern Singer** (Grit 0, Wits +1, Charm +2). These are optional, not compulsory backstories. Each character chooses one attribute at +2, one at +1, one at 0, begins at six Resolve, and carries a few sensible personal effects with no automatic puzzle solution.
+
+The shared opening fact is public: the bell is a warning from an old pressure-and-light system, not a monster. The PCs need not know that yet. Three approaches work: ask people and read the survey rubbing, inspect watermarks and listen at the Tide Market, or reach the Flooded Archive. The beacon can be reached immediately, but operating it safely requires discovering its controls through play; the same instructions can be learned by more than one route.
+
+## Rules to use here
+
+For a meaningful uncertain action, say the intended benefit and the concrete risk **before** rolling, then roll real 2d6 plus Grit (force/endurance), Wits (observation/repair), or Charm (persuasion/reassurance). 10+: do it cleanly. 7–9: do it and apply one stated cost appropriate to the action (usually lose 1 Resolve, advance surge one step, or leave a tool behind); offer the player a choice when both costs fit. 6 or less: the attempt changes the situation but advances play: reveal an essential clue, open a noisy or slower route, or produce a temporary setback with an alternative path. Never make a failed roll the only way to obtain a clue. A sufficiently good idea, relevant tool, or helpful conversation can work without a roll. NPCs do not override player choices.
+
+Resolve measures strain, not hit points; encounters use the same roll rather than a separate combat system. At zero, the character retreats from immediate danger to Lantern Quay or the Crooked Compass (player’s choice), loses no unique quest item or learned clue, and can recover to 2 Resolve with a breather. A calm break at the tavern restores 2 Resolve up to six once per character before the central discovery and once afterward; the zero-Resolve breather works even if those breaks were spent. No automatic death. An aggressive approach causes inconvenience, alarm, or repair work rather than graphic harm. Do not roll for walking an open exit, looking, taking an uncontested item, talking, or reading an available clue.
+
+The **surge** starts at 0, rises to 1 on the first noisy/slow complication that names it, and to 2 on a later one. At 2, water washes over the low quay, but all six rooms and all endings remain accessible; ropes and dry ledges make travel possible. Further surge costs instead mean soaked supplies or a lost 1 Resolve, never an unwinnable flood. A 7–9 cost must be declared before the roll. The surge is a consequence clock, not a turn timer or demand for simultaneous presence.
+
+### Shared state to record
+
+Record each character’s room, attributes, Resolve, inventory and visited rooms; public journal of discoveries and committed actions; and these world facts: `surge` (0–2), `plate_read`, `market_pattern_heard`, `archive_plan_read`, `balance_known`, `archive_access` (none/pump/stair/both), `pump_braced`, `prism_taken`, `tower_lens` (dark/ready/lit), `dial` (unset/balanced/diverted/shut), `ending` (none/balanced/diverted/shuttered/deferred). A clue learned by one character can be told to others in character or entered into the shared public journal; never imply everyone personally saw it. Unique items have one owner/location. Record the actual dice and outcome in the same action receipt; a retry returns the committed receipt, not a new roll. These are content semantics, not a substitute for engine authority or atomicity.
+
+## Location graph
+
+Bidirectional ordinary exits unless a condition is stated:
+
+- **Lantern Quay** ↔ **Crooked Compass** (west), ↔ **Tide Market** (east), ↔ **Beacon Tower** (up the sea steps).
+- **Crooked Compass** ↔ **Lantern Quay** (east), ↔ **Tide Market** (back lane).
+- **Tide Market** ↔ **Lantern Quay** (west), ↔ **Crooked Compass** (back lane), ↔ **Pump House** (north).
+- **Pump House** ↔ **Tide Market** (south), ↔ **Flooded Archive** (low hatch, usable after the cooperative obstacle; once opened, remains open).
+- **Beacon Tower** ↔ **Lantern Quay** (sea steps), ↔ **Flooded Archive** (service stair, rusty catch; always openable, details below).
+- **Flooded Archive** ↔ **Pump House** (low hatch when opened), ↔ **Beacon Tower** (service stair when opened).
+
+Neither Archive entrance is a one-roll chokepoint. From the start there is a route to every essential fact even if the Archive is never entered. Exits with conditions are described honestly when observed; do not advertise a blocked exit as open.
+
+## Six rooms
+
+### 1. Lantern Quay
+
+**Arrival/visible:** “The harbor’s lantern is a black shape against pale water. Three uneven bell notes travel through the planks under your boots. A line of wet footprints leads toward the market; the sea steps climb to the tower. West, warm windows glow at the Crooked Compass.” Exits: west tavern, east market, sea steps tower. At surge 2, add shallow water on lower planks and a dry rope-guided walkway; do not remove exits.
+
+**Investigate:** The bell sounds from below, not above. Saltwater seeps from seams in time with the third note; Wits observation or simply time spent listening reveals this, no roll. A faded marker on a mooring post reads “Two gates, one light.” This is a non-exclusive lead toward the system. Hidden to players until examined: a coil of **safety line** beneath a cleat; spotting it is automatic when searching cleats, and anyone may take it. It can steady the service stair or prevent a Resolve loss during a flood cost once, then remains reusable after drying. There is no secret mandatory key.
+
+**NPC:** Mara Vale may be here initially, carrying an unlit lamp. If the group invites her, she goes to the Beacon Tower; if not, she goes there after the characters first visit it and is available when sought. She will not solve the finale by herself.
+
+### 2. The Crooked Compass
+
+**Arrival/visible:** “A compass rose is painted crooked across the ceiling. A kettle ticks beside a stack of old harbor charts. Pell Dorr wipes the same glass each time the underground bell rings.” Exits east quay, back lane market. Warmth permits the listed rest.
+
+**Investigate:** Ask Pell about the old harbor or examine the charts: a **brass survey plate** bears a readable rubbing, with three settings labeled BALANCE, DIVERT, SHUT and a separate LIGHT instruction. Text: “When the third bell sounds, set balance before feeding the light. To save the low quay in haste, divert to the market run; to spare the market, shut the light and warn the boats.” Reading it sets `plate_read` and `balance_known`; copy the instructions into the public journal if the players choose. Pell can read it aloud. No roll required. The plate stays anchored to the table; a character can take a charcoal rubbing. Hidden until the plate is turned: a second inscription says “Flood gate may be held open from the pump or approached from the tower stair.” Turning the plate or asking Pell where the archive lies reveals the alternate routes.
+
+**Objects:** Charts locate every named room; the kettle/rest is safe; a polished **hand mirror** hanging near the door can be borrowed and used to focus the tower lamp if the Archive prism is not available, at the cost of a dimmer beam, not a failed ending. Taking it is routine; Pell asks that it be brought back. It is a unique tracked object.
+
+**NPC:** Pell Dorr, retired sounding-master, misses nothing but hates admitting the harbor warnings were neglected. He first says “Ask the water,” then shares the plate openly when asked directly or when shown an observation. Charm to get his private recollection under pressure risks embarrassment or delay; on 6− he still gives the plate’s instructions but confesses publicly that he ignored an earlier bell. Pell is not a clue gate.
+
+### 3. Tide Market
+
+**Arrival/visible:** “Empty fish stalls face a channel where the current runs against the falling tide. Each bell note makes a different row of hanging shells tremble. A young mechanic is tying colored twine around a cracked gauge.” Exits west quay, back lane tavern, north pump house.
+
+**Investigate:** Listen to the shell rows or study the **chalk gauge slate** with Suri: the first pulse points at a mark shaped like a branching channel (DIVERT), the second at a level bar (BALANCE), the third at a closed shutter (SHUT). The flowing water marks the middle setting as safe for both banks. Wits 10+ maps these immediately; 7–9 maps them while soaking a tool or advancing surge; 6− Suri points out the mark as a stall begins to flood, so `market_pattern_heard` and `balance_known` still become true. If no one wants to roll, Suri can demonstrate the pattern with a bowl of water after a conversation. The slate is fixed to the stall and can be copied. These instructions independently give the tower’s BALANCE-before-LIGHT procedure; a later plan in the Archive confirms it.
+
+**Objects:** A **weather crate** can be borrowed and carried to brace the pump lever. The crate is bulky: one character can carry it; do not require a roll unless in a rising-surge hazard, then apply the generic forward rules. A **colored twine loop** identifies the safe middle mark on either pump or tower dial. The loop is freely given by Suri and is useful but not required. At surge 2, market floorboards are wet and vendors relocate; no exits or clues disappear.
+
+**NPC:** Suri Pike, an apprentice who has made a hand-drawn map of the pipes but fears taking credit for it. Wants the town warned rather than a heroic secret. She can accompany a character to the Pump House to operate one control; one NPC assist substitutes for a second PC, not for the player’s decision.
+
+### 4. Pump House
+
+**Arrival/visible:** “Two iron controls face each other across a vibrating channel: a lever marked HOLD and a wheel marked RELEASE. Beyond them a low hatch shudders against water. The market path lies south.” Exits south market; low hatch to Archive, initially blocked but visible.
+
+**Cooperative obstacle:** Opening the low hatch calls for the lever to be held while the wheel is turned. Two present characters can do it together without a roll by assigning roles; this is a concrete cooperative action, not a demand that both send commands at precisely the same instant. Record first character’s held-lever intention as pending, then second character completes it when ready; the holder can cancel or leave. A solo player can ask Suri to hold the lever, or wedge it with the market crate (or an improvised sturdy object); neither route needs a roll. If the players choose to rush without assistance, state stakes: Grit to keep grip risks 1 Resolve or +1 surge; 10+ clean opening, 7–9 opening with chosen stated cost, 6− the hatch opens noisily, surge advances one (or 1 Resolve at cap), and the wheel jams in the open position. In every case `archive_access` includes pump and the hatch stays open. At zero Resolve the opening is committed before retreat. A later visitor can use it freely.
+
+**Investigate/objects:** A pressure diagram painted on the wall shows the two banks and a central balanced notch, setting `balance_known` on examination. The **weather crate** can remain as a brace; mark `pump_braced`. A drain grate lets a character hear the same three notes as the Market. Hidden until close examination: a maintenance label names the Tower’s service stair as the second Archive access. No required object is destroyed by a failed check.
+
+### 5. Flooded Archive
+
+**Arrival/visible:** “Shelves rise from ankle-deep water. Lantern-light, if you brought any, catches a brass plan bolted above the tide line. One stair climbs toward the tower; a low hatch leads toward the pump when opened.” Exits to opened pump hatch and tower stair. Entering from the tower stair opens that stair permanently; entering from Pump does not silently open the stair, but it is obvious and can be unlatched from inside.
+
+**Investigate:** The **brass harbor plan** is readable above water, no roll. It reveals why the beacon went out: the old bell warns that the pressure clutch has slipped into a dangerous notch. To restore beacon and balance both banks, set the Tower dial to BALANCE, fit either the archive prism or tavern mirror, then light the lamp. DIVERT preserves the low quay fast but sends a repairable flood through the Market; SHUT keeps the Market dry while the harbor boats need a warning and the beacon remains dark until later repairs. Reading sets `archive_plan_read` and `balance_known`. This is the fullest discovery, but its operating instructions are also at the tavern and market.
+
+**Objects:** A removable **glass prism** in a padded drawer focuses the brightest beacon; it is unique and can be taken without a roll. If another player took it, say the drawer is empty and identify the current known custodian only if that transfer is public; the mirror remains a complete alternative. A **tide register** notes previous safe settings; it is fixed, readable and copyable. A waterlogged folio contains personal letters, not puzzle-critical; treat respectfully or fade out as preferred.
+
+**Optional hazard:** A sliding shelf threatens to pin a satchel. State the risk before Grit/Wits; 10+ save it, 7–9 save it but lose 1 Resolve or leave a nonessential item, 6− water takes the satchel and reveals the maintenance route marked on its lid. Never drown a character or erase the plan. If the group skips the hazard, the plan is still readable.
+
+### 6. Beacon Tower
+
+**Arrival/visible:** “A cold lantern sits behind salt-fogged panes. Its control dial is marked BALANCE, DIVERT, SHUT; the pointer sits between marks. Beside it are a lens socket, an oil reservoir, and a hand bell. Below the landing, a bolted service stair descends into darkness.” Exits sea steps to Quay; stair to Archive, initially rusty but visible. The **oil reservoir** has enough oil for one ending; do not create an oil-fetch quest.
+
+**Investigate:** The dial’s marks and the condition of the lens are visible, but their consequences are not explained until the plate, pattern, pressure diagram, plan, or Mara explains them. Anyone can examine the mechanism and ask Mara. The service stair catch opens with two people lifting it, a line for leverage, Suri’s twine as a pull, or one person with effort. If effort is risky, say Grit stakes: 10+ silent, 7–9 opens at 1 Resolve or +1 surge, 6− opens loudly and +1 surge (or 1 Resolve at cap). It always opens and stays open, setting `archive_access` to include stair. No essential clue is behind an unrepeatable roll.
+
+**Objects:** The socket accepts the prism OR the tavern mirror OR a patient improvised reflector; the latter yields a narrower beam but is sufficient for the balanced ending. Lighting the lamp after choosing BALANCE is a routine final action when its procedure is known; do not demand a die roll just to finish. A character can ring the hand bell to warn boats, using Charm only if persuading frightened crews from the tower is uncertain; on 6− the warning still reaches them but a crew runs aground harmlessly and needs help. The final choice must be explicitly made by a player, never by Mara or the GM.
+
+**NPC:** Mara Vale, the lamplighter, knows the physical controls and carries the last dry wick. She first fears that re-lighting at the wrong dial setting will wash out one bank. Asked how to prevent that, she says plainly: “Balance first, then light. If you choose divert, tell the Market. If you shut it, warn the boats.” Her warning sets `balance_known` if players have missed the other routes. She helps fit an improvised reflector but will not decide the setting. A tense conversation may reveal her guilt about delaying maintenance; on any failed Charm roll she still gives the operating instruction and requests that the townspeople hear the truth.
+
+## Clue and access audit (GM only)
+
+The **central discovery** is the bell’s pressure warning and the three tower choices. Route A: Tavern plate → tower, with Pell or inscription explaining BALANCE-before-LIGHT. Route B: Market shells/slate and Pump diagram → tower, with Suri’s demonstration. Route C: Pump hatch OR Tower stair → Archive plan → tower. Mara at the tower is an independent emergency explanation. Any of these yields a playable final decision; no essential fact depends on a successful die roll, a unique item, a single NPC, or a party being in one room. The prism, mirror and improvised reflector are interchangeable finale sources. A player who reaches the tower immediately can learn the choices from Mara without being sent on a compulsory fetch quest.
+
+## Finale and endings
+
+When players are ready at the Tower, restate known consequences and ask which setting they choose. If the implications are not yet known, offer Mara’s explanation or let them investigate. Do not preselect. Persist the setting, supplied reflector, any warning, and the resulting world state before narrating it. An ending is a committed choice; further scenes may be an epilogue, not an automatic rewrite. If multiple players disagree, allow their characters to discuss; the player who operates the dial makes the action, with ordinary campaign action ordering. Never silently decide a disputed action by narrator fiat.
+
+1. **Balanced light (`ending=balanced`):** Set BALANCE, fit any reflector, light. The bell stops after one clear note; the beacon sweeps both shores. With the prism it reaches far out to sea; with mirror/improvised reflector it is dimmer and crews relay the warning, but the town is safe. At surge 2, neighbors spend the night bailing out the low quay, not enduring a new flood. Pell and Mara can acknowledge their missed maintenance. Ask each player what their character does at dawn.
+2. **Fast diversion (`ending=diverted`):** Set DIVERT and light, or choose DIVERT after learning its stakes. The low quay is spared immediately, the Market run floods to the ankles or knees, and Suri organizes recoverable repairs. Alerting the Market first saves its goods; otherwise one stall’s stock is lost, not a life. The beacon shines. This is not framed as a trick ending: perhaps the party judged the quay crowd more urgent. A later epilogue may include rebuilding with the Market’s consent.
+3. **Shutter and warning (`ending=shuttered`):** Set SHUT; ring the bell or ask people at Quay/Tavern/Market to warn boats (warning is always accomplishable, with a cost on a risky roll). The Market remains dry and the pressure drains safely over the night. The beacon stays dark; boats take the sheltered route on warnings. Mara promises a dawn repair and the players can decide whether to help. Do not require a reflector for this ending.
+4. **Deferred choice (`ending=deferred`):** If players elect to leave the machinery alone, they can organize a public warning and evacuation with Pell, Suri and Mara. People move to high ground, the low quay floods at surge 2, and the controls await repair next day. This is a valid accountable ending, not a dead-end punishment. If the players simply pause the session, do NOT commit this ending; preserve live state for resumption.
+
+If anyone tries to smash the machine, state the consequence before rolling: it may stop the bell but removes the safe balanced option until repairs. On 10+ they disable it safely and can choose the deferred/warning outcome; 7–9 it stops and the low quay floods while evacuation proceeds; 6− it still stops, raises the surge, and exposes the Archive plan through the broken cover. Offer repair or evacuation afterward. At zero Resolve apply retreat after the committed effect. Resolve conflict non-graphically and never transform resistance into a forced player ending.
+
+## Example of play (not a fabricated test)
+
+At the Market, a runner studies the shell pattern while Suri holds her slate. The GM says: “Wits will map the marks; the risk is that a stall floods while you check them. On 7–9, choose a soaked tool or one surge.” The engine rolls actual 2d6+Wits; if the result is 6, Suri still identifies BALANCE as the middle mark while water rushes across the planks. The public journal records the clue and increased surge. Later the party uses the crate to brace the Pump lever, enters the Archive, and chooses BALANCE at the Tower. No die is rolled to invent or retroactively change the final committed outcome.
+
+## Player-safe projection contract
+
+The engine/player presenter must construct fresh output from authorized committed state, not redact this GM draft or hide secrets in markup, CSS, DOM, comments, data attributes, downloadable JSON, or HTML. Until a character is in a room, its full description and objects are not in that character’s personal map. Shared publicly committed discoveries can appear in the common journal, with their source and discoverer, but private/GM-only notes, unrevealed endings, puzzle solutions and unvisited-room hidden descriptions are **omitted entirely**. The host owner’s access to files is outside this spoiler convention.
+
+A player-facing `look` includes the current room’s arrival/visible text adjusted for current surge; currently available exits (name and blocking condition if visible); visible objects and NPCs; same-room characters; and a concise as-of state version. `examine` reveals only the examined object’s discovery text, then persists its public fact if applicable. Inventory is only the querying character’s inventory; the public journal reports consensually shared or world-observable facts, not another character’s private items. A recap includes discovered objectives, committed outcomes, and recent public events, not the GM clue audit. There is a text fallback for every board element; an old board declares its as-of version, not live currency.
+
+**Opening sample player projection (no spoiler fields):**
+
+> Lantern Quay — The harbor’s lantern is a black shape against pale water. Three uneven bell notes travel through the planks. West, warm windows glow at the Crooked Compass; east, wet footprints lead toward Tide Market; sea steps climb to Beacon Tower. Mara Vale holds an unlit lamp nearby. Visible: mooring posts. Exits: Crooked Compass (west), Tide Market (east), Beacon Tower (sea steps). Objective: find why the beacon went dark. Resolve: 6/6. As of world version 1.
+
+The safety line beneath a cleat, the exact Archive plan, other rooms’ hidden text, and all ending consequences are absent here. A later projection may include them only after an authorized discovery or committed choice. The sample version is illustrative content, not a claim that a running engine exists.
