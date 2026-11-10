@@ -468,6 +468,58 @@ test("failed Archive shelf check reveals route and advances capped surge", async
   assert.match(await f.run("examine harbor-plan clue1"), /BALANCE/);
 });
 
+test("mixed Archive shelf result can leave a carried nonessential item, preserving Resolve and replay", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move market market");
+  await f.run("take colored-twine twine");
+  await f.run("move quay quay");
+  await f.run("move tower tower");
+  await f.run("open tower-stair stair");
+  await f.run("move archive archive");
+  let draws = 0;
+  const command = "risk archive-shelf grit colored-twine tavern shelf";
+  const result = await f.run(command, undefined, () => { draws++; return 3; });
+  assert.match(result, /cost.*colored-twine is left on the Archive shelf/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.items["colored-twine"], "archive");
+  assert.equal(saved.inventory[saved.owner].includes("colored-twine"), false);
+  assert.equal(saved.resolve[saved.owner], 6);
+  assert.equal(saved.world.flags.archiveShelfSettled, true);
+  assert.equal(saved.world.journal.filter((entry: string) => entry.includes("colored-twine is left")).length, 1);
+  assert.equal(draws, 2);
+  assert.equal(await f.run(command, undefined, () => { throw Error("rerolled"); }), result);
+  assert.match(await f.run("risk archive-shelf grit tavern shelf"), /already used/);
+  assert.match(await f.run("take colored-twine retrieve"), /Collected colored-twine/);
+});
+
+test("Archive shelf item choice rejects absent and essential gear before rolling", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move tower tower");
+  await f.run("open tower-stair stair");
+  await f.run("move archive archive");
+  const noRoll = () => { throw Error("unexpected roll"); };
+  assert.match(await f.run("risk archive-shelf grit hand-mirror quay absent", undefined, noRoll), /Carry the chosen item/);
+  assert.match(await f.run("risk archive-shelf grit safety-line quay essential", undefined, noRoll), /Usage:/);
+  assert.match(await f.run("risk archive-shelf grit quay ordinary", undefined, () => 3), /costs 1 Resolve/);
+});
+
+test("Archive item choice on a clean result does not leave the item", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move market market");
+  await f.run("take colored-twine twine");
+  await f.run("move quay quay");
+  await f.run("move tower tower");
+  await f.run("open tower-stair stair");
+  await f.run("move archive archive");
+  assert.match(await f.run("risk archive-shelf wits colored-twine quay shelf", undefined, () => 6), /clean.*saved cleanly/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.items["colored-twine"], saved.owner);
+  assert.equal(saved.inventory[saved.owner].includes("colored-twine"), true);
+});
+
 test("zero-Resolve Archive cost respects selected retreat room and breather", async () => {
   const f = fixture();
   await f.run("create start"); await f.run("move tower go1"); await f.run("open tower-stair stair1"); await f.run("move archive go2");

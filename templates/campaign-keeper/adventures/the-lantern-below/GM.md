@@ -83,7 +83,7 @@ Have the game owner talk to Suri in Tide Market with `/ck talk suri <id>`, and r
 
 **Objects:** A removable **glass prism** in a padded drawer focuses the brightest beacon; it is unique and can be taken without a roll. If another player took it, say the drawer is empty and identify the current known custodian only if that transfer is public; the mirror remains a complete alternative. A **tide register** notes previous safe settings; it is fixed, readable and copyable. A waterlogged folio contains personal letters, not puzzle-critical; treat respectfully or fade out as preferred.
 
-**Optional hazard:** A sliding shelf threatens to pin a satchel. State the risk before Grit/Wits; 10+ save it, 7–9 save it but lose 1 Resolve or leave a nonessential item, 6− water takes the satchel and reveals the maintenance route marked on its lid. Never drown a character or erase the plan. If the group skips the hazard, the plan is still readable.
+**Optional hazard:** A sliding shelf threatens to pin a satchel. State the risk before Grit/Wits; 10+ save it, 7–9 save it but lose 1 Resolve or leave a nonessential item, 6− water takes the satchel and reveals the maintenance route marked on its lid. Never drown a character or erase the plan. If the group skips the hazard, the plan is still readable. For the owner-only engine command, choose the 7–9 cost and retreat room before rolling: `/ck risk archive-shelf <grit|wits> <quay|tavern> <id>` costs 1 Resolve, or `/ck risk archive-shelf <grit|wits> <carried-nonessential-item> <quay|tavern> <id>` leaves that item recoverable on the Archive shelf. Do not offer the essential safety line as a cost. A lost response is reconciled by repeating the exact command and ID, not rerolling.
 
 ### 6. Beacon Tower
 
