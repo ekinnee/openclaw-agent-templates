@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runCommand, registerEngine, readGameStats } from "./engine.ts";
+import { runCommand, registerEngine, readGameStats, scenePrompt } from "./engine.ts";
 import type { PluginCommandContext } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 
@@ -50,6 +50,32 @@ test("owner authority and approved destination are mandatory", async () => {
     assert.match(await runCommand(f.context("look", patch), f.store), /unavailable/);
   f.setBinding({ ...f.binding, bindingId: "approved-2" });
   assert.match(await runCommand(f.context("look"), f.store), /unavailable/);
+});
+
+test("scene continuation receives only an authorized committed player projection", async () => {
+  const f = fixture();
+  assert.equal(await scenePrompt(f.context("scene"), f.store), null);
+  await runCommand(f.context("create start"), f.store);
+  const prompt = await scenePrompt(f.context("scene"), f.store);
+  assert.match(prompt!, /Lantern Quay.*asOfVersion/);
+  assert.doesNotMatch(prompt!, /bindingId|destination|approved|glass-prism|harbor-plan|weather-crate/);
+  assert.equal(await scenePrompt(f.context("scene", { senderId: "bob", senderIsOwner: false, assertOwnerCurrent: undefined }), f.store), null);
+  f.setBinding({ ...f.binding, bindingId: "new-binding" });
+  assert.equal(await scenePrompt(f.context("scene"), f.store), null);
+});
+
+test("registered scene command hands a bounded committed projection to the agent", async () => {
+  const f = fixture();
+  let command: any;
+  registerEngine({ pluginConfig: {}, registerCommand: (definition: any) => { command = definition; },
+    session: { controls: {} }, runtime: { state: { openKeyedStoreV2: () => f.store } } } as any);
+  assert.deepEqual(await command.handler(f.context("scene")), { text: "Campaign Keeper: unavailable or not authorized for this conversation." });
+  await runCommand(f.context("create start"), f.store);
+  const result = await command.handler(f.context("scene"));
+  assert.match(result.continueAgent?.prompt, /Campaign Keeper scene request.*Lantern Quay/);
+  assert.equal(result.text, undefined);
+  assert.equal(command.requireAuth, true);
+  assert.deepEqual(command.requiredScopes, ["operator.write"]);
 });
 
 test("UUID possession never grants a non-owner membership or a state effect", async () => {

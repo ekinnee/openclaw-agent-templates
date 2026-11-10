@@ -100,6 +100,30 @@ function receiptKey(actor: string, requestId: string): string { return JSON.stri
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
 const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
+/** A narration request contains only a committed player-facing view, never the GM source or save row. */
+export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
+  const id = identity(ctx);
+  if (!id || !ctx.getCurrentConversationBinding || !store.observe) return null;
+  ctx.assertOwnerCurrent!();
+  const target = destination(ctx, id, await ctx.getCurrentConversationBinding());
+  ctx.assertOwnerCurrent!();
+  if (!target) return null;
+  const key = JSON.stringify([id.agentId, id.sessionId, target]);
+  const { value: game } = await store.observe(key);
+  ctx.assertOwnerCurrent!();
+  if (!game || !bound(game, id, target) || !validGame(game, key) || !Object.hasOwn(game.players, id.actor)) return null;
+  if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return null;
+  ctx.assertOwnerCurrent!();
+  const projection = {
+    scene: viewRoom(game.world, game.players[id.actor], id.actor),
+    resolve: game.resolve[id.actor],
+    inventory: game.inventory[id.actor],
+    recentPublicEvents: game.world.journal.slice(-4),
+    ending: game.world.ending,
+    asOfVersion: game.version,
+  };
+  return `Campaign Keeper scene request. Narrate briefly from this committed player projection only; do not invent a roll, item, movement, NPC decision, new clue, consequence, or player action. Ask what the player does next. Projection (JSON): ${JSON.stringify(projection)}`;
+}
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
   if (!record(game) || !record(game.players) || !record(game.approved) || !record(game.receipts) ||
@@ -409,6 +433,10 @@ export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | 
           storeOptions,
           { assertCurrent: ctx.assertOwnerCurrent! },
         );
+        if (ctx.args?.trim() === "scene") {
+          const prompt = await scenePrompt(ctx, store);
+          return prompt ? { continueAgent: { prompt } } : { text: denied };
+        }
         return { text: await runCommand(ctx, store) };
       } catch {
         // No state, internals or binding details leaked when storage or authority fails.
