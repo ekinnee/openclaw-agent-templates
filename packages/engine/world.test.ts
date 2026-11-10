@@ -45,17 +45,34 @@ test("movement is legal, blocked routes remain blocked, and player-safe views tr
   assert.match(await f.run("create start"), /Lantern Quay/);
   assert.match(await f.run("move archive illegal"), /blocked or not connected/);
   assert.match(await f.run("move market m1"), /Tide Market/);
+  assert.match(await f.run("take weather-crate crate1"), /Collected weather-crate/);
   assert.match(await f.run("move pump m2"), /Pump House/);
   assert.match(await f.run("move archive m3"), /blocked or not connected/);
   assert.match(await f.run("open pump-hatch premature"), /must be held or braced/);
   assert.match(await f.run("brace pump-lever brace1"), /Braced/);
-  assert.equal(await f.run("brace pump-lever brace1"), "Braced the pump lever. Version 4.");
+  assert.equal(await f.run("brace pump-lever brace1"), "Braced the pump lever. Version 5.");
   assert.match(await f.run("open pump-hatch h1"), /Opened pump-hatch/);
   assert.match(await f.run("move archive m3"), /Flooded Archive/);
   assert.match(await f.run("look"), /glass-prism/);
   assert.match(await f.run("examine harbor-plan clue1"), /BALANCE/);
   assert.match(await f.run("recap"), /route to the Archive/);
   assert.doesNotMatch(await f.run("look"), /GM-only|unrevealed ending/);
+});
+
+test("Pump brace requires the uniquely tracked Market crate", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move market m1");
+  await f.run("move pump m2");
+  assert.match(await f.run("brace pump-lever premature"), /Bring the weather crate/);
+  assert.match(await f.run("open pump-hatch premature"), /must be held or braced/);
+  await f.run("move market back");
+  assert.match(await f.run("take weather-crate crate"), /Collected/);
+  await f.run("move pump return");
+  assert.match(await f.run("brace pump-lever brace"), /Braced/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.items["weather-crate"], saved.owner);
+  assert.equal(saved.inventory[saved.owner].filter((item: string) => item === "weather-crate").length, 1);
 });
 
 test("unique item pickup and receipt replay cannot claim twice; wrong-room examination is denied", async () => {
@@ -193,6 +210,7 @@ test("NPCs and clue routes require room presence and persist facts before finale
   await f.run("move market go2");
   assert.match(await f.run("examine gauge-slate clue2"), /middle setting/);
   assert.match(await f.run("talk suri talk2"), /middle BALANCE/);
+  assert.match(await f.run("take weather-crate crate1"), /Collected weather-crate/);
   saved = [...f.rows.values()][0];
   assert.equal(saved.world.clues.marketPatternHeard, true);
   await f.run("move pump go3");

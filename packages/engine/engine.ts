@@ -4,7 +4,7 @@ import { Buffer } from "node:buffer";
 import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import type { PluginSessionActionContext } from "openclaw/plugin-sdk/plugin-entry";
-import { canMove, examine, initialWorld, itemId, roomId, talk, viewRoom, type ClueId, type ItemId, type RoomId, type WorldState } from "./world.js";
+import { canMove, examine, initialWorld, itemId, itemIds, roomId, talk, viewRoom, type ItemId, type RoomId, type WorldState } from "./world.js";
 import { roll, validAttributes, type Attribute, type Attributes, type Roll } from "./rules.js";
 
 type Store = PluginStateKeyedStore<Game, 2>;
@@ -123,7 +123,7 @@ function validGame(game: Game, key: string): boolean {
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
       ["pumpOpen", "stairOpen", "lineFound", "pumpBraced", "boatsWarned", "marketWarned", "evacuated"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
   if (["plateRead", "marketPatternHeard", "archivePlanRead", "balanceKnown", "stakesKnown"].some((clue) => typeof game.world.clues[clue] !== "boolean")) return false;
-  for (const item of ["safety-line", "hand-mirror", "glass-prism"] as ItemId[]) {
+  for (const item of itemIds) {
     const holder = game.world.items[item];
     if (typeof holder !== "string" || (!roomId(holder) && !Object.hasOwn(game.players, holder))) return false;
     const ownedBy = Object.entries(game.inventory).filter(([, inventory]) => Array.isArray(inventory) && inventory.includes(item));
@@ -287,8 +287,9 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
         if (current.world.flags.pumpBraced) return "The pump lever is already braced.";
+        if (current.world.items["weather-crate"] !== id.actor) return "Bring the weather crate from Tide Market before bracing the lever.";
         next = { ...current, world: { ...current.world, flags: { ...current.world.flags, pumpBraced: true },
-          journal: [...current.world.journal, "The pump lever was secured with an improvised brace."] },
+          journal: [...current.world.journal, "The pump lever was secured with the weather crate."] },
           receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Braced the pump lever. Version ${next.version}.`;
       } else {

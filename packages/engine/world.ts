@@ -3,23 +3,24 @@
 export const rooms = {
   quay: { name: "Lantern Quay", text: "The beacon is dark. Three uneven bell notes travel through the harbor planks.", exits: { tavern: "tavern", market: "market", tower: "tower" }, objects: ["safety-line"] },
   tavern: { name: "Crooked Compass", text: "Warm windows and old harbor charts surround Pell's table.", exits: { quay: "quay", market: "market" }, objects: ["hand-mirror"] },
-  market: { name: "Tide Market", text: "Suri watches water pulse between the market stalls.", exits: { quay: "quay", tavern: "tavern", pump: "pump" }, objects: [] },
+  market: { name: "Tide Market", text: "Suri watches water pulse between the market stalls.", exits: { quay: "quay", tavern: "tavern", pump: "pump" }, objects: ["weather-crate", "colored-twine"] },
   pump: { name: "Pump House", text: "A lever and wheel face one another across a vibrating channel.", exits: { market: "market", archive: "archive" }, objects: [] },
   archive: { name: "Flooded Archive", text: "Shelves rise above shallow water and a brass harbor plan.", exits: { pump: "pump", tower: "tower" }, objects: ["glass-prism"] },
   tower: { name: "Beacon Tower", text: "A cold lantern stands by a dial and a bolted service stair.", exits: { quay: "quay", archive: "archive" }, objects: [] },
 } as const;
 export type RoomId = keyof typeof rooms;
-export type ItemId = "safety-line" | "hand-mirror" | "glass-prism";
+export type ItemId = "safety-line" | "hand-mirror" | "glass-prism" | "weather-crate" | "colored-twine";
+export const itemIds: readonly ItemId[] = ["safety-line", "hand-mirror", "glass-prism", "weather-crate", "colored-twine"];
 export type ClueId = "plateRead" | "marketPatternHeard" | "archivePlanRead" | "balanceKnown" | "stakesKnown";
 export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean; boatsWarned: boolean; marketWarned: boolean; evacuated: boolean }; clues: Record<ClueId, boolean>; ending: "none" | "balanced" | "diverted" | "shuttered" | "deferred"; dial: "unset" | "balanced" | "diverted" | "shut"; beacon: "dark" | "lit"; journal: string[] };
 export function initialWorld(): WorldState {
-  return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive" },
+  return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive", "weather-crate": "market", "colored-twine": "market" },
     flags: { pumpOpen: false, stairOpen: false, lineFound: false, pumpBraced: false, boatsWarned: false, marketWarned: false, evacuated: false },
     clues: { plateRead: false, marketPatternHeard: false, archivePlanRead: false, balanceKnown: false, stakesKnown: false },
     ending: "none", dial: "unset", beacon: "dark", journal: [] };
 }
 export function roomId(value: string): value is RoomId { return Object.hasOwn(rooms, value); }
-export function itemId(value: string): value is ItemId { return ["safety-line", "hand-mirror", "glass-prism"].includes(value); }
+export function itemId(value: string): value is ItemId { return itemIds.includes(value as ItemId); }
 export function canMove(world: WorldState, from: RoomId, to: RoomId): boolean {
   const exits: Record<string, string> = rooms[from].exits;
   if (exits[to] !== to) return false;
