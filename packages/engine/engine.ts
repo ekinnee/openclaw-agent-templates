@@ -291,7 +291,7 @@ export async function readGameStats(
         Object.keys(game.receipts).length !== game.version || game.version > MAX_RECEIPTS ||
         !game.players || typeof game.players !== "object" || Array.isArray(game.players) ||
         Object.keys(game.players).length < 1 || Object.keys(game.players).length > MAX_PLAYERS ||
-        !permitted()) return null;
+        !validGame(game, key) || !permitted()) return null;
     ids.add(game.id);
     games.push({ gameId: game.id, label: `Game ${games.length + 1}`, playerCount: Object.keys(game.players).length,
       acceptedActions: game.version });

@@ -6,6 +6,8 @@ const attributes = { grit: 2, wits: 1, charm: 0 } as const;
 test("original 2d6 bands use actual generated dice and a single attribute", () => {
   assert.equal(validAttributes(attributes), true);
   assert.equal(validAttributes({ grit: 2, wits: 2, charm: 0 }), false);
+  assert.equal(validAttributes({ grit: "0", wits: "1", charm: "2" }), false);
+  assert.throws(() => roll("charm", { grit: "0", wits: "1", charm: "2" } as any, () => 1), /Invalid character attributes/);
   const dice = [6, 2, 3, 2, 1, 1];
   const die = () => dice.shift()!;
   assert.deepEqual(roll("grit", attributes, die), { dice: [6, 2], attribute: "grit", modifier: 2, total: 10, band: "clean" });

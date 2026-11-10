@@ -8,7 +8,9 @@ export type Roll = { dice: [number, number]; attribute: Attribute; modifier: num
 export function validAttributes(value: unknown): value is Attributes {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  return Object.keys(v).length === 3 && [v.grit, v.wits, v.charm].sort().join(",") === "0,1,2";
+  return Object.keys(v).length === 3 &&
+    [v.grit, v.wits, v.charm].every((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 2) &&
+    new Set([v.grit, v.wits, v.charm]).size === 3;
 }
 export function roll(attribute: Attribute, attributes: Attributes, die: () => number = () => randomInt(1, 7)): Roll {
   if (!validAttributes(attributes)) throw new Error("Invalid character attributes");

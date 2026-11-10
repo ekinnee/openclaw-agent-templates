@@ -177,6 +177,16 @@ test("stats reject cross-agent readers, revoked roles, malformed rows, and capac
   game.sessionId = "other";
   assert.equal(await read(base), null);
   game.sessionId = "incarnation-a";
+  const world = game.world;
+  game.world = undefined;
+  assert.equal(await read(base), null);
+  assert.match(await runCommand(f.context("look"), f.store), /unavailable/);
+  game.world = world;
+  const attributes = game.attributes[game.owner];
+  game.attributes[game.owner] = { grit: "0", wits: "1", charm: "2" };
+  assert.equal(await read(base), null);
+  assert.match(await runCommand(f.context("roll charm bad"), f.store), /unavailable/);
+  game.attributes[game.owner] = attributes;
   f.store.entries = async () => Array.from({ length: 65 }, () => ({ key, value: game, createdAt: 1 }));
   assert.equal(await read(base), null);
 });
