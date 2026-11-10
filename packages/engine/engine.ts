@@ -67,7 +67,7 @@ function parse(args: string | undefined): Command | null {
   if (words[0] === "risk" && words.length === 5 && ["quay", "tavern"].includes(words[3]) && token.test(words[4])) {
     const [, hazard, choice, retreatRoom, requestId] = words;
     if ((hazard === "archive-shelf" && ["grit", "wits"].includes(choice)) ||
-        (hazard === "pump-hatch" && ["resolve", "surge"].includes(choice))) {
+        (["pump-hatch", "tower-stair"].includes(hazard) && ["resolve", "surge"].includes(choice))) {
       return { verb: "risk", target: `${hazard}:${choice}:${retreatRoom}`, requestId };
     }
   }
@@ -117,7 +117,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> [carried-item] <quay|tavern> <id> | risk pump-hatch <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> [carried-item] <quay|tavern> <id> | risk <pump-hatch|tower-stair> <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -312,27 +312,32 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const [hazard, choice, retreatRoom, leaveItem] = cmd.target!.split(":");
         const pump = hazard === "pump-hatch";
+        const stair = hazard === "tower-stair";
         if (pump) {
           if (current.players[id.actor] !== "pump") return "The Pump hatch is not here.";
           if (current.world.flags.pumpOpen) return "The Pump hatch is already open.";
           if (current.world.flags.pumpBraced) return "The lever is already braced; open the hatch without a roll.";
+        } else if (stair) {
+          if (current.players[id.actor] !== "tower") return "The Tower service stair is not here.";
+          if (current.world.flags.stairOpen) return "The Tower service stair is already open.";
         } else {
           if (current.players[id.actor] !== "archive") return "The shelf hazard is not here.";
           if (current.world.flags.archiveShelfSettled) return "The shelf hazard is already settled.";
           if (leaveItem && current.world.items[leaveItem as ItemId] !== id.actor) return "Carry the chosen item before risking the shelf.";
         }
         // Keep dice across internal CAS retries. Recompute costs against the fresh row.
-        const result = riskRoll ??= roll(pump ? "grit" : choice as Attribute, current.attributes[id.actor], die);
+        const result = riskRoll ??= roll(pump || stair ? "grit" : choice as Attribute, current.attributes[id.actor], die);
         const complication = result.band === "complication";
         const mixed = result.band === "cost";
-        const surgeCost = complication || (pump && mixed && choice === "surge");
+        const surgeCost = complication || ((pump || stair) && mixed && choice === "surge");
         const atCap = current.world.surge === 2;
-        const costsResolve = (mixed && !surgeCost && !leaveItem) || (pump && surgeCost && atCap);
+        const costsResolve = (mixed && !surgeCost && !leaveItem) || ((pump || stair) && surgeCost && atCap);
         const surge = surgeCost && !atCap ? current.world.surge + 1 : current.world.surge;
         const strain = applyResolve(current.resolve[id.actor], costsResolve ? 1 : 0);
         let consequence: string;
-        if (pump) {
-          const opening = complication ? "The Pump hatch opens noisily and the wheel jams open."
+        if (pump || stair) {
+          const opening = stair ? complication ? "The Tower service stair opens loudly." : mixed ? "The Tower service stair opens." : "The Tower service stair opens silently."
+            : complication ? "The Pump hatch opens noisily and the wheel jams open."
             : mixed ? "The Pump hatch opens." : "The Pump hatch opens cleanly.";
           const cost = costsResolve ? " The effort costs 1 Resolve." : surgeCost ? " The surge rises." : "";
           consequence = opening + cost;
@@ -342,8 +347,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
               ? "Water takes the satchel, exposing a maintenance route; supplies are soaked at high surge."
               : "Water takes the satchel, exposing a maintenance route; the surge rises.";
         }
-        const settled = pump ? "pumpOpen" : "archiveShelfSettled";
-        const entry = pump ? consequence : `The Archive shelf was settled. ${consequence}`;
+        const settled = pump ? "pumpOpen" : stair ? "stairOpen" : "archiveShelfSettled";
+        const entry = pump || stair ? consequence : `The Archive shelf was settled. ${consequence}`;
         const leave = !pump && mixed && leaveItem;
         next = { ...current, resolve: { ...current.resolve, [id.actor]: strain.resolve },
           players: strain.retreat ? { ...current.players, [id.actor]: retreatRoom as RoomId } : { ...current.players },

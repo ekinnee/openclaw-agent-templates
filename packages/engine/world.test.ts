@@ -550,6 +550,49 @@ test("Archive CAS retry reuses dice and rechecks carried item after a competing 
   assert.equal(saved.receipts[JSON.stringify([saved.owner, "shelf"])], undefined);
 });
 
+for (const scenario of [
+  { name: "clean", dice: [5, 5], cost: "resolve", surge: 0, resolve: 6, effect: /opens silently/ },
+  { name: "mixed Resolve", dice: [3, 3], cost: "resolve", surge: 0, resolve: 5, effect: /opens.*costs 1 Resolve/ },
+  { name: "mixed surge", dice: [3, 3], cost: "surge", surge: 1, resolve: 6, effect: /opens.*surge rises/ },
+  { name: "failure", dice: [1, 1], cost: "resolve", surge: 1, resolve: 6, effect: /opens loudly.*surge rises/ },
+  { name: "capped failure", dice: [1, 1], cost: "surge", initialSurge: 2, surge: 2, resolve: 5, effect: /opens loudly.*costs 1 Resolve/ },
+]) {
+  test(`solo Tower stair risk commits ${scenario.name} with replay`, async () => {
+    const f = fixture();
+    await f.run("create start");
+    await f.run("move tower tower");
+    const before = [...f.rows.values()][0];
+    before.world.surge = scenario.initialSurge ?? 0;
+    let draws = 0;
+    const command = `risk tower-stair ${scenario.cost} quay stair`;
+    const text = await f.run(command, undefined, () => scenario.dice[draws++]);
+    assert.match(text, scenario.effect);
+    assert.equal(draws, 2);
+    const saved = [...f.rows.values()][0];
+    assert.equal(saved.world.flags.stairOpen, true);
+    assert.equal(saved.world.surge, scenario.surge);
+    assert.equal(saved.resolve[saved.owner], scenario.resolve);
+    assert.equal(saved.world.journal.filter((entry: string) => scenario.effect.test(entry)).length, 1);
+    assert.deepEqual(saved.receipts[JSON.stringify([saved.owner, "stair"])].roll.dice, scenario.dice);
+    assert.equal(await f.run(command, undefined, () => { throw Error("reroll"); }), text);
+    assert.match(await f.run("move archive enter"), /Flooded Archive/);
+  });
+}
+
+test("Tower stair risk at zero Resolve retreats after the opening", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move tower tower");
+  const before = [...f.rows.values()][0];
+  before.world.surge = 2;
+  before.resolve[before.owner] = 1;
+  assert.match(await f.run("risk tower-stair surge tavern stair", undefined, () => 1), /Retreat to the Crooked Compass/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.flags.stairOpen, true);
+  assert.equal(saved.players[saved.owner], "tavern");
+  assert.equal(saved.resolve[saved.owner], 0);
+});
+
 test("zero-Resolve Archive cost respects selected retreat room and breather", async () => {
   const f = fixture();
   await f.run("create start"); await f.run("move tower go1"); await f.run("open tower-stair stair1"); await f.run("move archive go2");
