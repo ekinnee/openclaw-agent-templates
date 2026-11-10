@@ -122,4 +122,31 @@ test("ending is an explicit committed choice, cannot be rewritten, and updates a
   const saved = [...f.rows.values()][0];
   assert.equal(saved.world.ending, "balanced");
   assert.equal(saved.world.journal.filter((event: string) => event.includes("chose the balanced ending")).length, 1);
+  assert.equal(saved.world.dial, "balanced");
+  assert.equal(saved.world.beacon, "lit");
+});
+
+test("deferred and shuttered endings require prior warning, while diversion commits its stated cost", async () => {
+  const deferred = fixture();
+  await deferred.run("create start");
+  assert.match(await deferred.run("finish deferred premature"), /evacuation/);
+  await deferred.run("warn evacuate warn1");
+  assert.match(await deferred.run("finish deferred finish1"), /Residents have been warned and evacuated/);
+  const deferredSave = [...deferred.rows.values()][0];
+  assert.equal(deferredSave.world.beacon, "dark");
+  assert.equal(deferredSave.world.ending, "deferred");
+
+  const shuttered = fixture();
+  await shuttered.run("create start");
+  await shuttered.run("move tower travel");
+  assert.match(await shuttered.run("finish shuttered premature"), /Warn the boats/);
+  await shuttered.run("warn boats warn1");
+  assert.match(await shuttered.run("finish shuttered final"), /warned boats take shelter/);
+  assert.equal([...shuttered.rows.values()][0].world.dial, "shut");
+
+  const diverted = fixture();
+  await diverted.run("create start");
+  await diverted.run("move tower travel");
+  assert.match(await diverted.run("finish diverted final"), /lost stock/);
+  assert.equal([...diverted.rows.values()][0].world.beacon, "lit");
 });

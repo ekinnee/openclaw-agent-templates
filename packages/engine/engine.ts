@@ -26,7 +26,7 @@ type Game = {
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "brace" | "recap" | "roll" | "finish"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "brace" | "recap" | "roll" | "finish" | "warn"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -55,6 +55,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "roll", target: words[1], requestId: words[2] };
   if (words[0] === "finish" && words.length === 3 && ["balanced", "diverted", "shuttered", "deferred"].includes(words[1]) && token.test(words[2]))
     return { verb: "finish", target: words[1], requestId: words[2] };
+  if (words[0] === "warn" && words.length === 3 && ["boats", "market", "evacuate"].includes(words[1]) && token.test(words[2]))
+    return { verb: "warn", target: words[1], requestId: words[2] };
   return null;
 }
 
@@ -95,7 +97,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
@@ -103,6 +105,8 @@ function validGame(game: Game, key: string): boolean {
       !record(game.inventory) || !record(game.attributes) || !record(game.resolve) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) ||
       !Array.isArray(game.world.journal) || game.world.journal.length > MAX_RECEIPTS ||
       !["none", "balanced", "diverted", "shuttered", "deferred"].includes(game.world.ending) ||
+      !["unset", "balanced", "diverted", "shut"].includes(game.world.dial) ||
+      !["dark", "lit"].includes(game.world.beacon) ||
       !game.world.journal.every((entry) => typeof entry === "string" && entry.length <= 256) ||
       typeof game.id !== "string" || !/^[0-9a-f-]{36}$/.test(game.id) ||
       typeof game.agentId !== "string" || typeof game.sessionId !== "string" || typeof game.destination !== "string" ||
@@ -116,7 +120,7 @@ function validGame(game: Game, key: string): boolean {
         !game.inventory[actor].every(itemId)) return false;
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
-      ["pumpOpen", "stairOpen", "lineFound", "pumpBraced"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
+      ["pumpOpen", "stairOpen", "lineFound", "pumpBraced", "boatsWarned", "marketWarned", "evacuated"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
   for (const item of ["safety-line", "hand-mirror", "glass-prism"] as ItemId[]) {
     const holder = game.world.items[item];
     if (typeof holder !== "string" || (!roomId(holder) && !Object.hasOwn(game.players, holder))) return false;
@@ -237,17 +241,37 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];
         if (cmd.target !== "deferred" && at !== "tower") return "Operate the ending controls from Beacon Tower.";
+        if (cmd.target === "shuttered" && !current.world.flags.boatsWarned) return "Warn the boats before shutting the beacon.";
+        if (cmd.target === "deferred" && !current.world.flags.evacuated) return "Organize warning and evacuation before deferring repairs.";
         // Mara can help fit an improvised reflector: neither the prism nor mirror is a required quest key.
-        next = { ...current, world: { ...current.world, ending: cmd.target as WorldState["ending"],
-          journal: [...current.world.journal, `The party chose the ${cmd.target} ending.`] },
+        const dial = cmd.target === "balanced" ? "balanced" : cmd.target === "diverted" ? "diverted" : cmd.target === "shuttered" ? "shut" : "unset";
+        const beacon = cmd.target === "balanced" || cmd.target === "diverted" ? "lit" : "dark";
+        const consequence = cmd.target === "diverted"
+          ? current.world.flags.marketWarned ? "The Market was warned and its goods protected." : "One Market stall lost stock in the diverted water."
+          : cmd.target === "balanced" ? "Both shores are safe; a fitted or improvised reflector lights the beacon."
+          : cmd.target === "shuttered" ? "The warned boats take shelter while the Market remains dry."
+          : "Residents have been warned and evacuated; repairs wait until dawn.";
+        next = { ...current, world: { ...current.world, ending: cmd.target as WorldState["ending"], dial, beacon,
+          journal: [...current.world.journal, `The party chose the ${cmd.target} ending. ${consequence}`] },
           receipts: { ...current.receipts }, version: current.version + 1 };
-        text = `Committed ${cmd.target} ending. Version ${next.version}.`;
+        text = `Committed ${cmd.target} ending. ${consequence} Version ${next.version}.`;
+      } else if (cmd.verb === "warn") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        const flag = cmd.target === "boats" ? "boatsWarned" : cmd.target === "market" ? "marketWarned" : "evacuated";
+        if (cmd.target === "boats" && !["quay", "tower", "tavern", "market"].includes(current.players[id.actor])) return "The boats cannot hear you from here.";
+        if (cmd.target === "market" && current.players[id.actor] !== "market") return "Warn the Market from Tide Market.";
+        if (cmd.target === "evacuate" && !["quay", "market", "tavern"].includes(current.players[id.actor])) return "Organize evacuation from town.";
+        if (current.world.flags[flag]) return "That warning is already complete.";
+        next = { ...current, world: { ...current.world, flags: { ...current.world.flags, [flag]: true },
+          journal: [...current.world.journal, `The ${cmd.target} warning was completed.`] },
+          receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Committed ${cmd.target} warning. Version ${next.version}.`;
       } else if (cmd.verb === "brace") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
         if (current.world.flags.pumpBraced) return "The pump lever is already braced.";
         next = { ...current, world: { ...current.world, flags: { ...current.world.flags, pumpBraced: true },
-          journal: [...current.world.journal, "The pump lever was braced with the weather crate."] },
+          journal: [...current.world.journal, "The pump lever was secured with an improvised brace."] },
           receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Braced the pump lever. Version ${next.version}.`;
       } else {
