@@ -180,16 +180,21 @@ test("stats reject cross-agent readers, revoked roles, malformed rows, and capac
   assert.equal(await read(base), null);
 });
 
-test("stats action is opt-in and read-scoped without registering a widget", async () => {
+test("stats action and widget descriptor share explicit opt-in and read scope", async () => {
   const f = fixture();
   const registered: any[] = [];
+  const descriptors: any[] = [];
   const api = (enabled: boolean) => ({ pluginConfig: { dashboardEnabled: enabled, agentId: "keeper" },
-    session: { controls: { registerSessionAction: (action: any) => registered.push(action) } },
+    session: { controls: { registerSessionAction: (action: any) => registered.push(action),
+      registerControlUiDescriptor: (descriptor: any) => descriptors.push(descriptor) } },
     registerCommand: () => {}, runtime: { state: { openKeyedStoreV2: () => f.store } } });
   registerEngine(api(false) as any);
   assert.equal(registered.length, 0);
+  assert.equal(descriptors.length, 0);
   registerEngine(api(true) as any);
   assert.equal(registered.length, 1);
+  assert.deepEqual(descriptors, [{ surface: "widget", id: "game-stats", label: "Campaign Keeper statistics",
+    requiredScopes: ["operator.read"] }]);
   assert.deepEqual(registered[0].requiredScopes, ["operator.read"]);
   assert.equal((await registered[0].handler({ agentId: "keeper", sessionKey: "session", client: {
     scopes: ["operator.read"], allowsAgent: () => true, isSharedGateway: () => false,

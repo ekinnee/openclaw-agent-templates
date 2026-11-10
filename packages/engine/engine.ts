@@ -215,9 +215,13 @@ export async function readGameStats(
 }
 
 export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | "runtime" | "session" | "pluginConfig">): void {
-  // Explicit opt-in and an exact configured agent; no widget is exposed by this backend spike.
+  // Explicit opt-in and an exact configured agent; the descriptor and action share this gate.
   if (api.pluginConfig?.dashboardEnabled === true && typeof api.pluginConfig.agentId === "string" && api.pluginConfig.agentId.trim()) {
     const agentId = api.pluginConfig.agentId;
+    api.session.controls.registerControlUiDescriptor({
+      surface: "widget", id: "game-stats", label: "Campaign Keeper statistics",
+      requiredScopes: ["operator.read"],
+    });
     api.session.controls.registerSessionAction({
       id: "gameStats", description: "Read bounded Campaign Keeper game statistics", requiredScopes: ["operator.read"],
       schema: { type: "object", additionalProperties: false, properties: {} },
