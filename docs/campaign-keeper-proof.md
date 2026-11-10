@@ -28,6 +28,12 @@ A separate Campaign Keeper test session on the same `b1b5344` worktree re-ran Te
 
 Source inspection found `plugin-command-execution.ts` exposes `assertOwnerCurrent` only for admitted owners; `getCurrentConversationBinding` is an asynchronous read, not a transactional current-binding effect guard. V2 state action authority can accept `assertCurrent`, but the command context does not supply an equivalent callback for an ordinary non-owner. These remain blockers to claiming safe player mutations on the current command path. A disposable real-worker/reopen test, while useful, would not itself close the two-identity and authorization gaps.
 
+## Opt-in dashboard prototype (not live)
+
+At `e3caccf`, the engine spike gained a native Control UI widget and an opt-in `operator.read` backend action (`dashboardEnabled: true`, exact configured agent ID). The committed game key now includes the host `sessionId`, so a new conversation incarnation can become a distinct game after an accepted create; empty sessions and replayed create requests do not increase totals. The widget renders aggregate counts only, not raw identities, game IDs, locations, bindings or GM notes. Its own tests exercise absent read access and stale responses after a session switch.
+
+On this worktree, 12 focused tests passed using temporary local SDK/esbuild links, then the links were removed. `plugins build --root packages/engine --check` reported metadata up to date. These are fixture/browser-DOM tests and package checks, **not** a rendered Control UI installation or live data proof. The opt-in widget remains uninstalled; the engine is still only a two-room owner-only spike. The read model scans bounded committed rows but is not a transactionally consistent cross-row snapshot. No second human identity, disposable restart, or full game was tested.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
