@@ -38,6 +38,10 @@ On this worktree, 12 focused tests passed using temporary local SDK/esbuild link
 
 After the earlier proof snapshots, `227ce9d` added a six-room map, legal exits, limited room-scoped text, unique item claims, inventory and a public journal. Independent read-only review found hidden-item bypass, mutable-save validation and Pump shortcut gaps. `8ccdff4` fixed the hidden safety-line discovery and added fail-closed save validation, while explicitly labeling `open pump-hatch` a prototype shortcut rather than a completed cooperative obstacle. `27ae93d` added original 2d6/Resolve rule primitives; `fdb7c10` added default attributes and replayable engine-generated roll receipts, without applying hit/damage or story consequences. Seventeen focused engine/rules tests passed on the local fake-store harness. This is **not** the complete six-room adventure or live multiplayer engine; earlier dated proof above describes the state at those commits, not the present code.
 
+## Disposable real V2 state check
+
+A standalone temporary-state probe on OpenClaw 2026.11.2 used the actual `createPluginStateKeyedStoreV2` worker API with a two-row `reject-new` namespace. It observed an absent key, applied a CAS set, confirmed a stale comparison returned `conflict`, closed the state database, reopened a new store on the same disposable state directory, and read the committed value `1`. Output: `{"realV2":true,"initial":"applied","stale":"conflict","reopen":1}`; process exited 0 and its temporary directory was removed. This validates the host store primitive in isolation, **not** Campaign Keeper's plugin loading, action authority, a Gateway restart, or a live game replay. No production state was touched.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
