@@ -149,6 +149,21 @@ test("capacity, CAS conflicts, and missing CAS refuse mutation", async () => {
   assert.match(await runCommand(f.context("move market bytes"), f.store), /unavailable/);
 });
 
+test("the 64th receipt commits, while a 65th is refused without eviction", async () => {
+  const f = fixture();
+  await runCommand(f.context("create first"), f.store);
+  for (let n = 1; n < 64; n++) {
+    const result = await runCommand(f.context(`move ${n % 2 ? "market" : "quay"} step-${n}`), f.store);
+    assert.match(result, /Moved/);
+  }
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.version, 64);
+  assert.equal(Object.keys(saved.receipts).length, 64);
+  assert.match(await runCommand(f.context("move quay overflow"), f.store), /capacity reached/);
+  assert.equal([...f.rows.values()][0].version, 64);
+  assert.equal(await runCommand(f.context("move market step-63"), f.store), saved.receipts[JSON.stringify([saved.owner, "step-63"])].text);
+});
+
 test("owner approval has a fixed four-actor capacity", async () => {
   const f = fixture();
   await runCommand(f.context("create seed"), f.store);
