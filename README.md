@@ -4,7 +4,9 @@ A collection of independently installable OpenClaw Agent Templates. Each Templat
 
 ## Templates
 
-No Templates have been added to the default branch yet. Proposed additions are reviewed in pull requests.
+| Template | Purpose |
+| --- | --- |
+| [Language Conversation Partner](templates/language-conversation-partner/) | Text-first conversation, role-play, focused exercises, and learner-controlled feedback; optional planning without a second agent. |
 
 ## Using a Template
 

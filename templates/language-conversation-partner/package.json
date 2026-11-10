@@ -1,0 +1,9 @@
+{
+  "name": "language-conversation-partner",
+  "version": "0.1.1",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "template": "CLAW.md"
+  }
+}
