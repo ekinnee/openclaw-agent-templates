@@ -150,3 +150,22 @@ test("deferred and shuttered endings require prior warning, while diversion comm
   assert.match(await diverted.run("finish diverted final"), /lost stock/);
   assert.equal([...diverted.rows.values()][0].world.beacon, "lit");
 });
+
+test("a committed write with a lost reply reconciles by the same request ID without a second effect", async () => {
+  const f = fixture();
+  await f.run("create start");
+  const original = f.store.compareAndApply.bind(f.store);
+  let lost = true;
+  f.store.compareAndApply = async (...args: any[]) => {
+    const applied = await original(...args);
+    if (lost && applied.status === "applied") { lost = false; throw Error("reply lost after commit"); }
+    return applied;
+  };
+  await assert.rejects(() => f.run("move market uncertain"), /reply lost after commit/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.version, 2);
+  const retry = await f.run("move market uncertain");
+  assert.match(retry, /Moved.*Tide Market/);
+  assert.equal([...f.rows.values()][0].version, 2);
+  assert.match(await f.run("take safety-line uncertain"), /already used/);
+});
