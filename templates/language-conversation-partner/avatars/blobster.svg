@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -16 144 132" role="img" aria-labelledby="title desc">
+  <title id="title">Conversation Blobster</title>
+  <desc id="desc">A teal Blobster with warm coral claws and two speech bubbles.</desc>
+  <!-- Base geometry: MIT, copyright 2026 OpenClaw Foundation. See LICENSE. -->
+  <g stroke="#163b46" stroke-width="2" stroke-linejoin="round">
+    <path d="M89 -10 H120 Q129 -10 129 -1 V13 Q129 22 120 22 H110 L100 31 V22 H89 Q80 22 80 13 V-1 Q80 -10 89 -10 Z" fill="#fff2cd"/>
+    <path d="M60 8 C32 8 16 32 16 52 C16 72 30 90 44 95 L44 104 L54 104 L54 96 C58 97.5 62 97.5 66 96 L66 104 L76 104 L76 95 C90 90 104 72 104 52 C104 32 88 8 60 8 Z" fill="#69bdb4"/>
+    <path d="M20 42 C5 37 0 47 5 57 C10 67 20 62 25 52 C28 45 25 42 20 42 Z" fill="#ec8d77"/>
+    <path d="M100 42 C115 37 120 47 115 57 C110 67 100 62 95 52 C92 45 95 42 100 42 Z" fill="#ec8d77"/>
+    <path d="M36 30 Q45 21 56 23" fill="none" stroke="#d9f2de" stroke-width="4" stroke-linecap="round"/>
+    <path d="M49 53 Q60 62 71 53" fill="none" stroke-linecap="round"/>
+    <path d="M38 69 H72 Q79 69 79 76 V82 Q79 89 72 89 H57 L47 97 V89 H38 Q31 89 31 82 V76 Q31 69 38 69 Z" fill="#fff2cd"/>
+  </g>
+  <g fill="#163b46">
+    <circle cx="44" cy="42" r="4"/><circle cx="76" cy="42" r="4"/>
+    <circle cx="93" cy="6" r="2"/><circle cx="104" cy="6" r="2"/><circle cx="115" cy="6" r="2"/>
+    <circle cx="43" cy="79" r="2"/><circle cx="55" cy="79" r="2"/><circle cx="67" cy="79" r="2"/>
+  </g>
+</svg>
