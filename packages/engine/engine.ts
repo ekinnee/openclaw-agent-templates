@@ -57,6 +57,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "open", target: "pump-hatch:suri", requestId: words[3] };
   if (words[0] === "brace" && words.length === 3 && words[1] === "pump-lever" && token.test(words[2]))
     return { verb: "brace", target: words[1], requestId: words[2] };
+  if (words[0] === "brace" && words.length === 4 && words[1] === "pump-lever" && words[2] === "safety-line" && token.test(words[3]))
+    return { verb: "brace", target: "pump-lever:safety-line", requestId: words[3] };
   if (words[0] === "fit" && words.length === 3 && ["glass-prism", "hand-mirror", "improvised"].includes(words[1]) && token.test(words[2]))
     return { verb: "fit", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
@@ -119,7 +121,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create [quay-runner|tidehand|lantern-singer] <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> [carried-item] <quay|tavern> <id> | risk <pump-hatch|tower-stair> <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create [quay-runner|tidehand|lantern-singer] <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever [safety-line] <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> [carried-item] <quay|tavern> <id> | risk <pump-hatch|tower-stair> <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -411,11 +413,12 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
         if (current.world.flags.pumpOpen) return "The Pump hatch is already open.";
         if (current.world.flags.pumpBraced) return "The pump lever is already braced.";
-        if (current.world.items["weather-crate"] !== id.actor) return "Bring the weather crate from Tide Market before bracing the lever.";
+        const braceItem = cmd.target === "pump-lever:safety-line" ? "safety-line" : "weather-crate";
+        if (current.world.items[braceItem] !== id.actor) return `Carry the ${braceItem} before bracing the lever.`;
         next = { ...current, world: { ...current.world, flags: { ...current.world.flags, pumpBraced: true },
-          journal: [...current.world.journal, "The pump lever was secured with the weather crate."] },
+          journal: [...current.world.journal, `The pump lever was secured with the ${braceItem}.`] },
           receipts: { ...current.receipts }, version: current.version + 1 };
-        text = `Braced the pump lever. Version ${next.version}.`;
+        text = `Braced the pump lever with the ${braceItem}. Version ${next.version}.`;
       } else if (cmd.verb === "fit") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "tower") return "Fit the reflector at Beacon Tower.";

@@ -114,6 +114,10 @@ At `1ab7a8f`, `plugins build --check` reported metadata current and `plugins val
 
 Creation now accepts the authored Quay Runner, Tidehand or Lantern Singer stat allocation, with Quay Runner as the default. The archetype choice is part of the versioned creation receipt; reusing its request ID for a different choice is refused. The GM operating contract names the exact command and forbids prose-only stat changes. All 54 engine/browser fixture tests and Template validation passed on the 2026.11.2 installed checkout with temporary SDK links removed after tests. This does not demonstrate an installed GM/model turn or custom/free-form character creation.
 
+### One bounded improvised intent mapping
+
+A proposal to tie the previously discovered, carried safety line to the Pump lever can be adjudicated as `/ck brace pump-lever safety-line <id>`. The engine checks present room and actual item ownership before committing the brace, item-specific journal event and replay receipt; it does not fabricate a crate or consume the line. Tests cover an accepted route through the hatch, wrong room, absent item, duplicate request and unchanged crate location. All 56 engine/browser fixture tests plus Template validation passed against 2026.11.2 with temporary SDK links removed afterward. This proves one bounded mapping and fail-closed refusal, **not** a general open-ended operation API or observed GM/model improvisation. Unsupported proposals still cannot mutate saved state by prose.
+
 ### Solo Pump House command verification
 
 On `feat/campaign-keeper` from `1ca5e56`, `npm test` in `packages/engine` passed all 43 focused tests, including two browser fixtures. Temporary links resolved the local OpenClaw 2026.11.1 SDK and `tsx` and were removed after the run. The new cases cover Suri's offer, all Grit outcome bands, the mixed-band choice, surge cap, zero-Resolve retreat and recovery, a lost response after a real roll, and CAS conflicts. Independent review of the engine and test diff found no actionable P0–P2 issues.

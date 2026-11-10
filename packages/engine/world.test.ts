@@ -50,7 +50,7 @@ test("movement is legal, blocked routes remain blocked, and player-safe views tr
   assert.match(await f.run("move archive m3"), /blocked or not connected/);
   assert.match(await f.run("open pump-hatch premature"), /must be held or braced/);
   assert.match(await f.run("brace pump-lever brace1"), /Braced/);
-  assert.equal(await f.run("brace pump-lever brace1"), "Braced the pump lever. Version 5.");
+  assert.equal(await f.run("brace pump-lever brace1"), "Braced the pump lever with the weather-crate. Version 5.");
   assert.match(await f.run("open pump-hatch h1"), /Opened pump-hatch/);
   assert.match(await f.run("move archive m3"), /Flooded Archive/);
   assert.match(await f.run("look"), /glass-prism/);
@@ -64,7 +64,7 @@ test("Pump brace requires the uniquely tracked Market crate", async () => {
   await f.run("create start");
   await f.run("move market m1");
   await f.run("move pump m2");
-  assert.match(await f.run("brace pump-lever premature"), /Bring the weather crate/);
+  assert.match(await f.run("brace pump-lever premature"), /Carry the weather-crate/);
   assert.match(await f.run("open pump-hatch premature"), /must be held or braced/);
   await f.run("move market back");
   assert.match(await f.run("take weather-crate crate"), /Collected/);
@@ -73,6 +73,38 @@ test("Pump brace requires the uniquely tracked Market crate", async () => {
   const saved = [...f.rows.values()][0];
   assert.equal(saved.world.items["weather-crate"], saved.owner);
   assert.equal(saved.inventory[saved.owner].filter((item: string) => item === "weather-crate").length, 1);
+});
+
+test("an unscripted safety-line lever proposal maps to a validated item-specific brace", async () => {
+  const f = fixture();
+  await f.run("create start");
+  assert.match(await f.run("brace pump-lever safety-line distant"), /not here/);
+  assert.match(await f.run("examine cleat discover"), /safety-line/);
+  assert.match(await f.run("take safety-line claim"), /Collected safety-line/);
+  await f.run("move market market");
+  await f.run("move pump pump");
+  const before = [...f.rows.values()][0];
+  const text = await f.run("brace pump-lever safety-line lever");
+  assert.match(text, /Braced.*safety-line/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.version, before.version + 1);
+  assert.equal(saved.world.flags.pumpBraced, true);
+  assert.equal(saved.world.items["safety-line"], saved.owner);
+  assert.equal(saved.world.items["weather-crate"], "market");
+  assert.equal(saved.world.journal.filter((event: string) => event.includes("secured with the safety-line")).length, 1);
+  assert.equal(await f.run("brace pump-lever safety-line lever"), text);
+  assert.match(await f.run("brace pump-lever different"), /already braced/);
+  assert.match(await f.run("open pump-hatch hatch"), /Opened pump-hatch/);
+  assert.match(await f.run("move archive enter"), /Flooded Archive/);
+});
+
+test("safety-line brace cannot claim absent or undiscovered gear", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move market market");
+  await f.run("move pump pump");
+  assert.match(await f.run("brace pump-lever safety-line absent"), /Carry the safety-line/);
+  assert.equal([...f.rows.values()][0].world.flags.pumpBraced, false);
 });
 
 test("Suri offers help in the Market and opens the hatch with the player at the Pump", async () => {
