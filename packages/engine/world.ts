@@ -10,10 +10,10 @@ export const rooms = {
 } as const;
 export type RoomId = keyof typeof rooms;
 export type ItemId = "safety-line" | "hand-mirror" | "glass-prism";
-export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean }; journal: string[] };
+export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean }; journal: string[] };
 export function initialWorld(): WorldState {
   return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive" },
-    flags: { pumpOpen: false, stairOpen: false, lineFound: false }, journal: [] };
+    flags: { pumpOpen: false, stairOpen: false, lineFound: false, pumpBraced: false }, journal: [] };
 }
 export function roomId(value: string): value is RoomId { return Object.hasOwn(rooms, value); }
 export function itemId(value: string): value is ItemId { return ["safety-line", "hand-mirror", "glass-prism"].includes(value); }

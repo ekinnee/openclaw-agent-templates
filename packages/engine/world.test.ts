@@ -47,6 +47,9 @@ test("movement is legal, blocked routes remain blocked, and player-safe views tr
   assert.match(await f.run("move market m1"), /Tide Market/);
   assert.match(await f.run("move pump m2"), /Pump House/);
   assert.match(await f.run("move archive m3"), /blocked or not connected/);
+  assert.match(await f.run("open pump-hatch premature"), /must be held or braced/);
+  assert.match(await f.run("brace pump-lever brace1"), /Braced/);
+  assert.equal(await f.run("brace pump-lever brace1"), "Braced the pump lever. Version 4.");
   assert.match(await f.run("open pump-hatch h1"), /Opened pump-hatch/);
   assert.match(await f.run("move archive m3"), /Flooded Archive/);
   assert.match(await f.run("look"), /glass-prism/);

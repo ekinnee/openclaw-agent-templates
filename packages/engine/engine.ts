@@ -26,7 +26,7 @@ type Game = {
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "recap" | "roll"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "brace" | "recap" | "roll"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -49,6 +49,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "take", target: words[1], requestId: words[2] };
   if (words[0] === "open" && words.length === 3 && (words[1] === "pump-hatch" || words[1] === "tower-stair") && token.test(words[2]))
     return { verb: "open", target: words[1], requestId: words[2] };
+  if (words[0] === "brace" && words.length === 3 && words[1] === "pump-lever" && token.test(words[2]))
+    return { verb: "brace", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
     return { verb: "roll", target: words[1], requestId: words[2] };
   return null;
@@ -91,7 +93,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
@@ -111,7 +113,7 @@ function validGame(game: Game, key: string): boolean {
         !game.inventory[actor].every(itemId)) return false;
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
-      ["pumpOpen", "stairOpen", "lineFound"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
+      ["pumpOpen", "stairOpen", "lineFound", "pumpBraced"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
   for (const item of ["safety-line", "hand-mirror", "glass-prism"] as ItemId[]) {
     const holder = game.world.items[item];
     if (typeof holder !== "string" || (!roomId(holder) && !Object.hasOwn(game.players, holder))) return false;
@@ -227,11 +229,21 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         next = { ...current, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. Version ${next.version}. No consequence committed.`;
         next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
+      } else if (cmd.verb === "brace") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
+        if (current.world.flags.pumpBraced) return "The pump lever is already braced.";
+        next = { ...current, world: { ...current.world, flags: { ...current.world.flags, pumpBraced: true },
+          journal: [...current.world.journal, "The pump lever was braced with the weather crate."] },
+          receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Braced the pump lever. Version ${next.version}.`;
       } else {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];
         if ((cmd.target === "pump-hatch" && at !== "pump" && at !== "archive") ||
             (cmd.target === "tower-stair" && at !== "tower" && at !== "archive")) return "That mechanism is not here.";
+        if (cmd.target === "pump-hatch" && at === "pump" && !current.world.flags.pumpBraced)
+          return "The lever must be held or braced before the wheel can open the hatch.";
         const flags = { ...current.world.flags, [cmd.target === "pump-hatch" ? "pumpOpen" : "stairOpen"]: true };
         next = { ...current, world: { ...current.world, flags, journal: [...current.world.journal, `A route to the Archive was opened.`] },
           receipts: { ...current.receipts }, version: current.version + 1 };
