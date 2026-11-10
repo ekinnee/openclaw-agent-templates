@@ -64,6 +64,12 @@ After review, `c114347` added room-scoped Pell/Suri/Mara conversations and commi
 
 `f381319` tracks the Market weather crate and twine as unique world items and requires actual crate ownership before the Pump solo brace; the focused suite reached 22 passes. `a7ccc39` added owner-scoped `/ck scene`: it reads an authorized committed player projection and returns the public SDK's `continueAgent: { prompt }` shape while deterministic commands remain command-only. `d3e9943` limited that scene handoff to the game creator and added await-boundary tests for demotion and rebinding. Twenty-five focused fake-store/rules tests passed. An independent read-only review found no confirmed high-severity scene code defect, but cautioned that prior chat and private GM source remain available to the model; prompt wording is **not spoiler isolation**. No installed GM model turn or adversarial narration test was observed. The reviewer used a source checkout that appeared older than the target; the primary host independently reports OpenClaw `2026.11.2` at `c53c53e749f`, matching the package peer pin.
 
+## Risk/action review and current solo-store rerun
+
+`8944bb4` added an optional Archive shelf action that commits dice and Resolve/surge effects together, plus Tavern recovery; independent review found zero-Resolve retreat choice, rest-period, capacity, and malformed-save issues. `387bb43` repaired those without claiming generalized combat, and `bf66c55` pinned the 64th-receipt/65th-refusal boundary. Twenty-nine focused fake-store/rules tests passed. The Archive risk still uses a fixed 7–9 Resolve cost rather than the authored alternative to leave a nonessential item, and the command itself does not prove stakes were stated before rolling.
+
+The previous disposable solo script was updated to take the tracked Market crate before the Pump brace. The corrected **18-action** route on actual temporary V2 state reached the balanced ending, reopened its state and returned one completed game: `{"realV2":true,"actions":18,"ending":"balanced","beacon":"lit","reopened":true,"completedGames":1}`; process exited 0 and temporary state was removed. This remains synthetic owner/engine-only proof, not an installed GM/model or human playtest.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
