@@ -5,7 +5,7 @@ import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sd
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import type { PluginSessionActionContext } from "openclaw/plugin-sdk/plugin-entry";
 import { canMove, examine, initialWorld, itemId, itemIds, roomId, talk, viewRoom, type ItemId, type RoomId, type WorldState } from "./world.js";
-import { roll, validAttributes, type Attribute, type Attributes, type Roll } from "./rules.js";
+import { applyResolve, roll, validAttributes, type Attribute, type Attributes, type Roll } from "./rules.js";
 
 type Store = PluginStateKeyedStore<Game, 2>;
 type Position = RoomId;
@@ -21,12 +21,13 @@ type Game = {
   players: Record<string, Position>;
   attributes: Record<string, Attributes>;
   resolve: Record<string, number>;
+  rests: Record<string, { before: boolean; after: boolean }>;
   inventory: Record<string, ItemId[]>;
   world: WorldState;
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "talk" | "open" | "brace" | "recap" | "roll" | "finish" | "warn"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "talk" | "open" | "brace" | "recap" | "roll" | "risk" | "rest" | "finish" | "warn"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -54,6 +55,10 @@ function parse(args: string | undefined): Command | null {
     return { verb: "brace", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
     return { verb: "roll", target: words[1], requestId: words[2] };
+  if (words[0] === "risk" && words.length === 4 && words[1] === "archive-shelf" && ["grit", "wits"].includes(words[2]) && token.test(words[3]))
+    return { verb: "risk", target: `${words[1]}:${words[2]}`, requestId: words[3] };
+  if (words[0] === "rest" && words.length === 2 && token.test(words[1]))
+    return { verb: "rest", requestId: words[1] };
   if (words[0] === "finish" && words.length === 3 && ["balanced", "diverted", "shuttered", "deferred"].includes(words[1]) && token.test(words[2]))
     return { verb: "finish", target: words[1], requestId: words[2] };
   if (words[0] === "warn" && words.length === 3 && ["boats", "market", "evacuate"].includes(words[1]) && token.test(words[2]))
@@ -98,7 +103,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -127,11 +132,12 @@ export async function scenePrompt(ctx: PluginCommandContext, store: Store): Prom
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
   if (!record(game) || !record(game.players) || !record(game.approved) || !record(game.receipts) ||
-      !record(game.inventory) || !record(game.attributes) || !record(game.resolve) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) || !record(game.world.clues) ||
+      !record(game.inventory) || !record(game.attributes) || !record(game.resolve) || !record(game.rests) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) || !record(game.world.clues) ||
       !Array.isArray(game.world.journal) || game.world.journal.length > MAX_RECEIPTS ||
       !["none", "balanced", "diverted", "shuttered", "deferred"].includes(game.world.ending) ||
       !["unset", "balanced", "diverted", "shut"].includes(game.world.dial) ||
       !["dark", "lit"].includes(game.world.beacon) ||
+      !Number.isInteger(game.world.surge) || game.world.surge < 0 || game.world.surge > 2 ||
       !game.world.journal.every((entry) => typeof entry === "string" && entry.length <= 256) ||
       typeof game.id !== "string" || !/^[0-9a-f-]{36}$/.test(game.id) ||
       typeof game.agentId !== "string" || typeof game.sessionId !== "string" || typeof game.destination !== "string" ||
@@ -143,9 +149,10 @@ function validGame(game: Game, key: string): boolean {
     if (!roomId(room) || game.approved[actor] !== true || !validAttributes(game.attributes[actor]) ||
         !Number.isInteger(game.resolve[actor]) || game.resolve[actor] < 0 || game.resolve[actor] > 6 || !Array.isArray(game.inventory[actor]) ||
         !game.inventory[actor].every(itemId)) return false;
+    if (!record(game.rests[actor]) || typeof game.rests[actor].before !== "boolean" || typeof game.rests[actor].after !== "boolean") return false;
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
-      ["pumpOpen", "stairOpen", "lineFound", "pumpBraced", "boatsWarned", "marketWarned", "evacuated"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
+      ["pumpOpen", "stairOpen", "lineFound", "pumpBraced", "boatsWarned", "marketWarned", "evacuated", "archiveShelfSettled"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
   if (["plateRead", "marketPatternHeard", "archivePlanRead", "balanceKnown", "stakesKnown"].some((clue) => typeof game.world.clues[clue] !== "boolean")) return false;
   for (const item of itemIds) {
     const holder = game.world.items[item];
@@ -212,7 +219,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
         sessionKey: id.sessionKey, destination: target, owner: id.actor,
         approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, attributes: { [id.actor]: { grit: 1, wits: 2, charm: 0 } },
-        resolve: { [id.actor]: 6 }, inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
+        resolve: { [id.actor]: 6 }, rests: { [id.actor]: { before: false, after: false } },
+        inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
       };
       text = `Created game ${next.id}. ${describe(next, id.actor)}`;
     } else {
@@ -231,6 +239,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         next = { ...current, players: { ...current.players, [id.actor]: current.players[id.actor] ?? "quay" },
           attributes: { ...current.attributes, [id.actor]: current.attributes[id.actor] ?? { grit: 1, wits: 2, charm: 0 } },
           resolve: { ...current.resolve, [id.actor]: current.resolve[id.actor] ?? 6 },
+          rests: { ...current.rests, [id.actor]: current.rests[id.actor] ?? { before: false, after: false } },
           inventory: { ...current.inventory, [id.actor]: current.inventory[id.actor] ?? [] }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Joined game ${next.id}. ${describe(next, id.actor)}`;
       } else if (cmd.verb === "move") {
@@ -277,6 +286,35 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         next = { ...current, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. Version ${next.version}. No consequence committed.`;
         next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
+      } else if (cmd.verb === "risk") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        if (current.players[id.actor] !== "archive") return "The shelf hazard is not here.";
+        if (current.world.flags.archiveShelfSettled) return "The shelf hazard is already settled.";
+        const result = roll(cmd.target!.split(":")[1] as Attribute, current.attributes[id.actor], die);
+        const cost = result.band === "cost" ? 1 : 0;
+        const strain = applyResolve(current.resolve[id.actor], cost);
+        const surge = result.band === "complication" ? Math.min(2, current.world.surge + 1) : current.world.surge;
+        const consequence = result.band === "clean" ? "The satchel is saved cleanly." : result.band === "cost"
+          ? "The satchel is saved, but the effort costs 1 Resolve." : "Water takes the satchel, exposing a maintenance route; the surge rises.";
+        next = { ...current, resolve: { ...current.resolve, [id.actor]: strain.resolve },
+          players: strain.retreat ? { ...current.players, [id.actor]: "quay" } : { ...current.players },
+          world: { ...current.world, surge, flags: { ...current.world.flags, archiveShelfSettled: true },
+            journal: [...current.world.journal, `The Archive shelf was settled. ${consequence}`] },
+          receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. ${consequence}${strain.retreat ? " Retreat to Lantern Quay; a breather can restore Resolve." : ""} Version ${next.version}.`;
+        next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
+      } else if (cmd.verb === "rest") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        if (current.players[id.actor] !== "tavern" && current.resolve[id.actor] !== 0) return "Rest at the Crooked Compass.";
+        if (current.resolve[id.actor] === 6) return "Resolve is already full.";
+        const afterDiscovery = current.world.clues.archivePlanRead || current.world.clues.balanceKnown;
+        const period = afterDiscovery ? "after" : "before";
+        if (current.resolve[id.actor] !== 0 && current.rests[id.actor][period]) return "That Tavern rest has already been used.";
+        const restored = Math.min(6, current.resolve[id.actor] + 2);
+        next = { ...current, resolve: { ...current.resolve, [id.actor]: restored },
+          rests: { ...current.rests, [id.actor]: current.resolve[id.actor] === 0 ? { ...current.rests[id.actor] } : { ...current.rests[id.actor], [period]: true } },
+          receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Recovered to ${restored} Resolve. Version ${next.version}.`;
       } else if (cmd.verb === "finish") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];

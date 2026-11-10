@@ -222,3 +222,46 @@ test("NPCs and clue routes require room presence and persist facts before finale
   assert.equal(saved.world.clues.archivePlanRead, true);
   assert.match(await f.run("talk mara wrong2"), /not here/);
 });
+
+test("optional Archive shelf check commits dice and cost together, and replays once", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move tower go1");
+  await f.run("open tower-stair stair1");
+  await f.run("move archive go2");
+  const context = (args: string) => ({
+    args, commandBody: `/ck ${args}`, isAuthorizedSender: true, senderIsOwner: true, assertOwnerCurrent: () => {},
+    getCurrentConversationBinding: async () => ({ bindingId: "approved", channel: "chat", accountId: "account", conversationId: "room", threadId: "thread" }),
+    senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:room", sessionId: "game-one",
+    channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread",
+  }) as PluginCommandContext;
+  let calls = 0;
+  const rolled = await runCommand(context("risk archive-shelf grit shelf1"), f.store, () => { calls++; return 3; });
+  assert.match(rolled, /3\+3 \+ 1 grit = 7: cost.*costs 1 Resolve/);
+  assert.equal(calls, 2);
+  assert.equal(await runCommand(context("risk archive-shelf grit shelf1"), f.store, () => { throw Error("reroll"); }), rolled);
+  assert.match(await f.run("risk archive-shelf grit shelf2"), /already settled/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.resolve[saved.owner], 5);
+  assert.equal(saved.world.flags.archiveShelfSettled, true);
+  assert.equal(saved.world.surge, 0);
+  assert.match(await f.run("move tower go3"), /Beacon Tower/);
+  assert.match(await f.run("rest not-in-tavern"), /Crooked Compass/);
+  await f.run("move quay go4");
+  await f.run("move tavern go5");
+  assert.match(await f.run("rest recover"), /Recovered to 6 Resolve/);
+});
+
+test("failed Archive shelf check reveals route and advances capped surge", async () => {
+  const f = fixture();
+  await f.run("create start"); await f.run("move tower go1"); await f.run("open tower-stair stair1"); await f.run("move archive go2");
+  const context = (args: string) => ({ args, commandBody: `/ck ${args}`, isAuthorizedSender: true, senderIsOwner: true,
+    assertOwnerCurrent: () => {}, getCurrentConversationBinding: async () => ({ bindingId: "approved", channel: "chat", accountId: "account", conversationId: "room", threadId: "thread" }),
+    senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:room", sessionId: "game-one", channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread" }) as PluginCommandContext;
+  const result = await runCommand(context("risk archive-shelf wits shelf1"), f.store, () => 1);
+  assert.match(result, /complication.*maintenance route/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.surge, 1);
+  assert.equal(saved.world.flags.archiveShelfSettled, true);
+  assert.match(await f.run("examine harbor-plan clue1"), /BALANCE/);
+});
