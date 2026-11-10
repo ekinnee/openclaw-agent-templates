@@ -42,6 +42,12 @@ After the earlier proof snapshots, `227ce9d` added a six-room map, legal exits, 
 
 A standalone temporary-state probe on OpenClaw 2026.11.2 used the actual `createPluginStateKeyedStoreV2` worker API with a two-row `reject-new` namespace. It observed an absent key, applied a CAS set, confirmed a stale comparison returned `conflict`, closed the state database, reopened a new store on the same disposable state directory, and read the committed value `1`. Output: `{"realV2":true,"initial":"applied","stale":"conflict","reopen":1}`; process exited 0 and its temporary directory was removed. This validates the host store primitive in isolation, **not** Campaign Keeper's plugin loading, action authority, a Gateway restart, or a live game replay. No production state was touched.
 
+## Later local mechanics and verification
+
+With Erick's explicit Campaign Keeper coding-route exception, the branch advanced through `fa97231` (Pump solo brace), `8a471c1` (explicit endings and active/completed counts), `d40975b` (warnings plus dial/beacon/consequences committed in the ending row), `f733ca5` (old prototype saves fail closed), and `0d34d96` (lost-reply replay regression). Twenty focused tests passed with the local TS runner. Plugin validation returned `valid: true` and `plugins build --root packages/engine --check` reported metadata current using temporary task-local SDK/esbuild links, which were removed afterward. The package remains a prototype with owner-only commands and no live rendered/install proof.
+
+The Pump brace is an improvised solo route, not a full two-player handoff; numeric combat, complete NPC/encounter consequences, and themed generation remain future scope. A disposable real V2 store reopen does not prove an actual Gateway restart. A separate SDK inspection found a potential **model-mediated** version-2 tool route with `assertInvocationCurrent` for non-owner turns, but it has not been implemented or validated for Campaign Keeper; it cannot be treated as a cheap command equivalent. The public `/ck` command still has the non-owner after-await authority blocker.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
