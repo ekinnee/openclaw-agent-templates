@@ -22,7 +22,7 @@ function fixture() {
     senderId: "alice", agentId: "keeper", sessionKey: "agent:keeper:room", sessionId: "game-one",
     channel: "chat", accountId: "account", from: "chat:room", to: "chat:room", messageThreadId: "thread", ...patch,
   }) as PluginCommandContext;
-  const run = (args: string, patch?: Record<string, unknown>) => runCommand(ctx(args, patch), store);
+  const run = (args: string, patch?: Record<string, unknown>, die?: () => number) => runCommand(ctx(args, patch), store, die);
   return { rows, run, store };
 }
 
@@ -73,6 +73,191 @@ test("Pump brace requires the uniquely tracked Market crate", async () => {
   const saved = [...f.rows.values()][0];
   assert.equal(saved.world.items["weather-crate"], saved.owner);
   assert.equal(saved.inventory[saved.owner].filter((item: string) => item === "weather-crate").length, 1);
+});
+
+test("Suri offers help in the Market and opens the hatch with the player at the Pump", async () => {
+  const f = fixture();
+  const noRoll = () => { throw new Error("unexpected dice"); };
+  await f.run("create start");
+  await f.run("move market market");
+  await f.run("examine gauge-slate slate");
+  assert.match(await f.run("open pump-hatch suri early", undefined, noRoll), /not here/);
+  await f.run("move pump pump");
+  assert.match(await f.run("open pump-hatch suri early", undefined, noRoll), /Talk to Suri/);
+  await f.run("move market return");
+  assert.match(await f.run("talk suri talk"), /help at the Pump House/);
+  await f.run("move pump back");
+  const before = [...f.rows.values()][0];
+  const opened = await f.run("open pump-hatch suri help", undefined, noRoll);
+  assert.match(opened, /Suri holds the lever.*opened pump-hatch/i);
+  const after = [...f.rows.values()][0];
+  assert.equal(after.version, before.version + 1);
+  assert.equal(after.world.flags.pumpOpen, true);
+  assert.equal(after.world.flags.pumpBraced, false);
+  assert.equal(after.world.surge, before.world.surge);
+  assert.deepEqual(after.resolve, before.resolve);
+  assert.deepEqual(after.world.journal.slice(before.world.journal.length), ["Suri held the lever while the player opened the Pump hatch."]);
+  const receipt = after.receipts[JSON.stringify([after.owner, "help"])];
+  assert.equal(receipt.text, opened);
+  assert.equal(receipt.roll, undefined);
+  assert.match(await f.run("open pump-hatch help"), /already used/);
+  assert.match(await f.run("open pump-hatch again"), /already open/);
+  assert.match(await f.run("risk pump-hatch surge quay again", undefined, noRoll), /already open/);
+  assert.match(await f.run("move archive enter"), /Flooded Archive/);
+  assert.equal(await f.run("open pump-hatch suri help", undefined, noRoll), opened);
+  assert.match(await f.run("move pump back-through-hatch"), /Pump House/);
+});
+
+async function pumpFixture() {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("examine cleat cleat");
+  await f.run("take safety-line line");
+  await f.run("move market market");
+  await f.run("talk suri talk");
+  await f.run("move pump pump");
+  return f;
+}
+
+for (const scenario of [
+  { name: "10+ clean", dice: [4, 5], choice: "resolve", band: "clean", surge: 0, resolve: 6, effect: /opens cleanly/ },
+  { name: "7–9 with Resolve cost", dice: [3, 3], choice: "resolve", band: "cost", surge: 0, resolve: 5, effect: /opens.*costs 1 Resolve/ },
+  { name: "7–9 with surge cost", dice: [4, 4], choice: "surge", band: "cost", surge: 1, resolve: 6, effect: /opens.*surge rises/ },
+  { name: "7–9 at surge cap", dice: [3, 4], choice: "surge", band: "cost", initialSurge: 2, surge: 2, resolve: 5, effect: /opens.*costs 1 Resolve/ },
+  { name: "6− jammed open", dice: [2, 3], choice: "resolve", band: "complication", initialSurge: 1, surge: 2, resolve: 6, effect: /jams open.*surge rises/ },
+  { name: "6− capped surge and zero Resolve", dice: [1, 1], choice: "surge", band: "complication", initialSurge: 2, initialResolve: 1, surge: 2, resolve: 0, effect: /jams open.*costs 1 Resolve/ },
+]) {
+  test(`rushed Pump hatch commits ${scenario.name} in one replayable effect`, async () => {
+    const f = await pumpFixture();
+    const before = [...f.rows.values()][0];
+    before.world.surge = scenario.initialSurge ?? 0;
+    before.resolve[before.owner] = scenario.initialResolve ?? 6;
+    const command = `risk pump-hatch ${scenario.choice} tavern rush`;
+    let draws = 0;
+    const opened = await f.run(command, undefined, () => scenario.dice[draws++]);
+    assert.equal(draws, 2);
+    assert.match(opened, scenario.effect);
+    const after = [...f.rows.values()][0];
+    assert.equal(after.version, before.version + 1);
+    assert.equal(after.world.flags.pumpOpen, true);
+    assert.equal(after.world.flags.pumpBraced, false);
+    assert.equal(after.world.surge, scenario.surge);
+    assert.equal(after.resolve[after.owner], scenario.resolve);
+    assert.deepEqual(after.inventory, before.inventory);
+    assert.deepEqual(after.world.clues, before.world.clues);
+    const entries = after.world.journal.slice(before.world.journal.length);
+    assert.equal(entries.length, 1);
+    assert.match(entries[0], scenario.effect);
+    const receipt = after.receipts[JSON.stringify([after.owner, "rush"])];
+    assert.equal(receipt.text, opened);
+    const [first, second] = scenario.dice;
+    assert.deepEqual(receipt.roll, { dice: scenario.dice, attribute: "grit", modifier: 1, total: first + second + 1, band: scenario.band });
+    assert.equal(await f.run(command, undefined, () => { throw new Error("reroll"); }), opened);
+    assert.match(await f.run(`risk pump-hatch ${scenario.choice} quay rush`), /already used/);
+    const otherCost = scenario.choice === "surge" ? "resolve" : "surge";
+    assert.match(await f.run(`risk pump-hatch ${otherCost} tavern rush`), /already used/);
+    assert.equal([...f.rows.values()][0].version, after.version);
+    if (scenario.resolve === 0) {
+      assert.match(opened, /Retreat to the Crooked Compass/);
+      assert.equal(after.players[after.owner], "tavern");
+      assert.match(await f.run("rest breather"), /Recovered to 2 Resolve/);
+      await f.run("move market return");
+      await f.run("move pump back");
+    } else {
+      assert.equal(after.players[after.owner], "pump");
+    }
+    assert.match(await f.run("move archive enter"), /Flooded Archive/);
+  });
+}
+
+test("a rushed Pump hatch requires a present player and an unbraced hatch", async () => {
+  const f = fixture();
+  const noRoll = () => { throw new Error("unexpected dice"); };
+  await f.run("create start");
+  assert.match(await f.run("risk pump-hatch resolve quay rush", undefined, noRoll), /not here/);
+  await f.run("move market market");
+  await f.run("take weather-crate crate");
+  await f.run("move pump pump");
+  await f.run("brace pump-lever brace");
+  assert.match(await f.run("risk pump-hatch resolve quay rush", undefined, noRoll), /already braced/);
+  assert.match(await f.run("open pump-hatch rush"), /Opened pump-hatch/);
+});
+
+test("a conflicting hatch opening leaves exactly one journal effect and receipt", async () => {
+  const f = await pumpFixture();
+  const before = [...f.rows.values()][0];
+  const apply = f.store.compareAndApply.bind(f.store);
+  const attempts: string[] = [];
+  f.store.compareAndApply = async (...args: any[]) => {
+    const result = await apply(...args);
+    attempts.push(result.status);
+    return result;
+  };
+  const [rushed, assisted] = await Promise.all([
+    f.run("risk pump-hatch surge quay rush", undefined, () => 1),
+    f.run("open pump-hatch suri help"),
+  ]);
+  assert.deepEqual(attempts.sort(), ["applied", "conflict"]);
+  const after = [...f.rows.values()][0];
+  assert.equal(after.version, before.version + 1);
+  assert.equal(after.world.journal.length, before.world.journal.length + 1);
+  assert.equal(after.world.flags.pumpOpen, true);
+  if (Object.hasOwn(after.receipts, JSON.stringify([after.owner, "rush"]))) {
+    assert.match(rushed, /jams open/);
+    assert.match(assisted, /already open/);
+    assert.equal(after.world.surge, 1);
+  } else {
+    assert.match(assisted, /Suri holds/);
+    assert.match(rushed, /already open/);
+    assert.equal(after.world.surge, 0);
+  }
+});
+
+test("a Pump CAS retry keeps its dice and resolves the cost against fresh state", async () => {
+  const f = await pumpFixture();
+  const before = [...f.rows.values()][0];
+  before.world.surge = 1;
+  const apply = f.store.compareAndApply.bind(f.store);
+  let conflict = false;
+  f.store.compareAndApply = async (key: string, comparison: string, intent: any) => {
+    if (!conflict) {
+      conflict = true;
+      const concurrent = structuredClone(before);
+      concurrent.world.surge = 2;
+      assert.equal((await apply(key, comparison, { ...intent, value: concurrent })).status, "applied");
+    }
+    return apply(key, comparison, intent);
+  };
+  let draws = 0;
+  const opened = await f.run("risk pump-hatch surge quay rush", undefined, () => { draws++; return 1; });
+  assert.match(opened, /jams open.*costs 1 Resolve/);
+  assert.equal(draws, 2);
+  const after = [...f.rows.values()][0];
+  assert.equal(after.world.surge, 2);
+  assert.equal(after.resolve[after.owner], 5);
+  assert.equal(after.world.journal.length, before.world.journal.length + 1);
+});
+
+test("a lost Pump reply replays the real engine roll and its saved effect", async () => {
+  const f = await pumpFixture();
+  const before = [...f.rows.values()][0];
+  const apply = f.store.compareAndApply.bind(f.store);
+  f.store.compareAndApply = async (...args: any[]) => {
+    assert.equal((await apply(...args)).status, "applied");
+    throw new Error("reply lost after commit");
+  };
+  const command = "risk pump-hatch resolve quay lost";
+  await assert.rejects(() => f.run(command), /reply lost after commit/);
+  const after = [...f.rows.values()][0];
+  const { roll, text } = after.receipts[JSON.stringify([after.owner, "lost"])];
+  const [first, second] = roll.dice;
+  assert.ok([first, second].every((die) => Number.isInteger(die) && die >= 1 && die <= 6));
+  assert.equal(roll.total, first + second + 1);
+  assert.equal(after.world.flags.pumpOpen, true);
+  assert.equal(after.world.journal.length, before.world.journal.length + 1);
+  assert.equal(after.version, before.version + 1);
+  assert.equal(await f.run(command, undefined, () => { throw new Error("reroll"); }), text);
+  assert.deepEqual([...f.rows.values()][0], after);
 });
 
 test("unique item pickup and receipt replay cannot claim twice; wrong-room examination is denied", async () => {

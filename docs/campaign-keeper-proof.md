@@ -97,3 +97,9 @@ The previous disposable solo script was updated to take the tracked Market crate
 - Play through failure and multiple endings; inspect spoiler-safe text and UI, and capture actual browser proof if a board ships.
 
 Record commands, revisions, sanitized output and reviewer findings below as tests are completed; do not substitute fixtures or mock identities for live integration evidence.
+
+### Solo Pump House command verification
+
+On `feat/campaign-keeper` from `1ca5e56`, `npm test` in `packages/engine` passed all 43 focused tests, including two browser fixtures. Temporary links resolved the local OpenClaw 2026.11.1 SDK and `tsx` and were removed after the run. The new cases cover Suri's offer, all Grit outcome bands, the mixed-band choice, surge cap, zero-Resolve retreat and recovery, a lost response after a real roll, and CAS conflicts. Independent review of the engine and test diff found no actionable P0–P2 issues.
+
+`openclaw templates validate .` passed on a temporary copy using the target 2026.11.2 CLI with isolated state. The local 2026.11.1 CLI rejected the existing `automations` manifest field. `git diff --check` passed. This proof covers command fixtures and Template structure. Installed solo play, real Gateway restart and narration remain open.

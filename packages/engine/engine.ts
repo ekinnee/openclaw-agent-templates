@@ -51,14 +51,21 @@ function parse(args: string | undefined): Command | null {
     return { verb: "take", target: words[1], requestId: words[2] };
   if (words[0] === "open" && words.length === 3 && (words[1] === "pump-hatch" || words[1] === "tower-stair") && token.test(words[2]))
     return { verb: "open", target: words[1], requestId: words[2] };
+  if (words[0] === "open" && words.length === 4 && words[1] === "pump-hatch" && words[2] === "suri" && token.test(words[3]))
+    return { verb: "open", target: "pump-hatch:suri", requestId: words[3] };
   if (words[0] === "brace" && words.length === 3 && words[1] === "pump-lever" && token.test(words[2]))
     return { verb: "brace", target: words[1], requestId: words[2] };
   if (words[0] === "fit" && words.length === 3 && ["glass-prism", "hand-mirror", "improvised"].includes(words[1]) && token.test(words[2]))
     return { verb: "fit", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
     return { verb: "roll", target: words[1], requestId: words[2] };
-  if (words[0] === "risk" && words.length === 5 && words[1] === "archive-shelf" && ["grit", "wits"].includes(words[2]) && ["quay", "tavern"].includes(words[3]) && token.test(words[4]))
-    return { verb: "risk", target: `${words[1]}:${words[2]}:${words[3]}`, requestId: words[4] };
+  if (words[0] === "risk" && words.length === 5 && ["quay", "tavern"].includes(words[3]) && token.test(words[4])) {
+    const [, hazard, choice, retreatRoom, requestId] = words;
+    if ((hazard === "archive-shelf" && ["grit", "wits"].includes(choice)) ||
+        (hazard === "pump-hatch" && ["resolve", "surge"].includes(choice))) {
+      return { verb: "risk", target: `${hazard}:${choice}:${retreatRoom}`, requestId };
+    }
+  }
   if (words[0] === "rest" && words.length === 2 && token.test(words[1]))
     return { verb: "rest", requestId: words[1] };
   if (words[0] === "finish" && words.length === 3 && ["balanced", "diverted", "shuttered", "deferred"].includes(words[1]) && token.test(words[2]))
@@ -105,7 +112,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> <quay|tavern> <id> | risk pump-hatch <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -189,6 +196,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
   // The namespace is retained. Agent and conversation identity are both part of the key,
   // and the stored binding must still match before any response or effect.
   const key = JSON.stringify([id.agentId, id.sessionId, target]);
+  let pumpRoll: Roll | undefined;
   for (let attempts = 0; attempts < 5; attempts++) {
     ctx.assertOwnerCurrent!();
     const observed = await store.observe(key);
@@ -277,7 +285,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         const conversation = talk(current.world, at, cmd.target!);
         if (!conversation) return "That NPC is not here.";
         const clues = { ...current.world.clues, [conversation.clue]: true, balanceKnown: true };
-        next = { ...current, world: { ...current.world, clues, journal: [...current.world.journal, `${cmd.target} shared an operating clue in ${at}.`] },
+        const flags = cmd.target === "suri" ? { ...current.world.flags, suriOfferedHelp: true } : current.world.flags;
+        next = { ...current, world: { ...current.world, flags, clues, journal: [...current.world.journal, `${cmd.target} shared an operating clue in ${at}.`] },
           receipts: { ...current.receipts }, version: current.version + 1 };
         text = `${conversation.text} Version ${next.version}.`;
       } else if (cmd.verb === "take") {
@@ -296,21 +305,44 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
       } else if (cmd.verb === "risk") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
-        if (current.players[id.actor] !== "archive") return "The shelf hazard is not here.";
-        if (current.world.flags.archiveShelfSettled) return "The shelf hazard is already settled.";
-        const [, attribute, retreatRoom] = cmd.target!.split(":");
-        const result = roll(attribute as Attribute, current.attributes[id.actor], die);
-        const cost = result.band === "cost" ? 1 : 0;
-        const strain = applyResolve(current.resolve[id.actor], cost);
-        const surge = result.band === "complication" ? Math.min(2, current.world.surge + 1) : current.world.surge;
-        const consequence = result.band === "clean" ? "The satchel is saved cleanly." : result.band === "cost"
-          ? "The satchel is saved, but the effort costs 1 Resolve." : current.world.surge === 2
-            ? "Water takes the satchel, exposing a maintenance route; supplies are soaked at high surge."
-            : "Water takes the satchel, exposing a maintenance route; the surge rises.";
+        const [hazard, choice, retreatRoom] = cmd.target!.split(":");
+        const pump = hazard === "pump-hatch";
+        if (pump) {
+          if (current.players[id.actor] !== "pump") return "The Pump hatch is not here.";
+          if (current.world.flags.pumpOpen) return "The Pump hatch is already open.";
+          if (current.world.flags.pumpBraced) return "The lever is already braced; open the hatch without a roll.";
+        } else {
+          if (current.players[id.actor] !== "archive") return "The shelf hazard is not here.";
+          if (current.world.flags.archiveShelfSettled) return "The shelf hazard is already settled.";
+        }
+        // Keep the Pump dice across internal CAS retries. Recompute the effect from the latest row.
+        const result = pump ? (pumpRoll ??= roll("grit", current.attributes[id.actor], die))
+          : roll(choice as Attribute, current.attributes[id.actor], die);
+        const complication = result.band === "complication";
+        const mixed = result.band === "cost";
+        const surgeCost = complication || (pump && mixed && choice === "surge");
+        const atCap = current.world.surge === 2;
+        const costsResolve = (mixed && !surgeCost) || (pump && surgeCost && atCap);
+        const surge = surgeCost && !atCap ? current.world.surge + 1 : current.world.surge;
+        const strain = applyResolve(current.resolve[id.actor], costsResolve ? 1 : 0);
+        let consequence: string;
+        if (pump) {
+          const opening = complication ? "The Pump hatch opens noisily and the wheel jams open."
+            : mixed ? "The Pump hatch opens." : "The Pump hatch opens cleanly.";
+          const cost = costsResolve ? " The effort costs 1 Resolve." : surgeCost ? " The surge rises." : "";
+          consequence = opening + cost;
+        } else {
+          consequence = mixed ? "The satchel is saved, but the effort costs 1 Resolve."
+            : !complication ? "The satchel is saved cleanly." : atCap
+              ? "Water takes the satchel, exposing a maintenance route; supplies are soaked at high surge."
+              : "Water takes the satchel, exposing a maintenance route; the surge rises.";
+        }
+        const settled = pump ? "pumpOpen" : "archiveShelfSettled";
+        const entry = pump ? consequence : `The Archive shelf was settled. ${consequence}`;
         next = { ...current, resolve: { ...current.resolve, [id.actor]: strain.resolve },
           players: strain.retreat ? { ...current.players, [id.actor]: retreatRoom as RoomId } : { ...current.players },
-          world: { ...current.world, surge, flags: { ...current.world.flags, archiveShelfSettled: true },
-            journal: [...current.world.journal, `The Archive shelf was settled. ${consequence}`] },
+          world: { ...current.world, surge, flags: { ...current.world.flags, [settled]: true },
+            journal: [...current.world.journal, entry] },
           receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. ${consequence}${strain.retreat ? ` Retreat to ${retreatRoom === "quay" ? "Lantern Quay" : "the Crooked Compass"}; a breather can restore Resolve.` : ""} Version ${next.version}.`;
         next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
@@ -360,6 +392,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       } else if (cmd.verb === "brace") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
+        if (current.world.flags.pumpOpen) return "The Pump hatch is already open.";
         if (current.world.flags.pumpBraced) return "The pump lever is already braced.";
         if (current.world.items["weather-crate"] !== id.actor) return "Bring the weather crate from Tide Market before bracing the lever.";
         next = { ...current, world: { ...current.world, flags: { ...current.world.flags, pumpBraced: true },
@@ -377,14 +410,18 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       } else {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];
-        if ((cmd.target === "pump-hatch" && at !== "pump" && at !== "archive") ||
-            (cmd.target === "tower-stair" && at !== "tower" && at !== "archive")) return "That mechanism is not here.";
-        if (cmd.target === "pump-hatch" && at === "pump" && !current.world.flags.pumpBraced)
-          return "The lever must be held or braced before the wheel can open the hatch.";
-        const flags = { ...current.world.flags, [cmd.target === "pump-hatch" ? "pumpOpen" : "stairOpen"]: true };
-        next = { ...current, world: { ...current.world, flags, journal: [...current.world.journal, `A route to the Archive was opened.`] },
+        const assisted = cmd.target === "pump-hatch:suri";
+        const pump = assisted || cmd.target === "pump-hatch";
+        if (at !== (pump ? "pump" : "tower") && (at !== "archive" || assisted)) return "That mechanism is not here.";
+        if (pump && current.world.flags.pumpOpen) return "The Pump hatch is already open.";
+        if (assisted && !current.world.flags.suriOfferedHelp) return "Talk to Suri at Tide Market before asking her to hold the lever.";
+        if (pump && at === "pump" && !assisted && !current.world.flags.pumpBraced)
+          return "The lever must be held or braced before the wheel can open the hatch. Ask Suri, use the weather crate, or choose a risky opening.";
+        const flags = { ...current.world.flags, [pump ? "pumpOpen" : "stairOpen"]: true };
+        const entry = assisted ? "Suri held the lever while the player opened the Pump hatch." : "A route to the Archive was opened.";
+        next = { ...current, world: { ...current.world, flags, journal: [...current.world.journal, entry] },
           receipts: { ...current.receipts }, version: current.version + 1 };
-        text = `Opened ${cmd.target}. Version ${next.version}.`;
+        text = `${assisted ? "Suri holds the lever. " : ""}Opened ${pump ? "pump-hatch" : "tower-stair"}. Version ${next.version}.`;
       }
     }
     // Prevent unbounded retained rows: reject before a receipt can be silently evicted.

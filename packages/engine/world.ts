@@ -12,7 +12,7 @@ export type RoomId = keyof typeof rooms;
 export type ItemId = "safety-line" | "hand-mirror" | "glass-prism" | "weather-crate" | "colored-twine";
 export const itemIds: readonly ItemId[] = ["safety-line", "hand-mirror", "glass-prism", "weather-crate", "colored-twine"];
 export type ClueId = "plateRead" | "marketPatternHeard" | "archivePlanRead" | "balanceKnown" | "stakesKnown";
-export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean; boatsWarned: boolean; marketWarned: boolean; evacuated: boolean; archiveShelfSettled: boolean }; clues: Record<ClueId, boolean>; surge: number; reflector: "none" | "glass-prism" | "hand-mirror" | "improvised"; ending: "none" | "balanced" | "diverted" | "shuttered" | "deferred"; dial: "unset" | "balanced" | "diverted" | "shut"; beacon: "dark" | "lit"; journal: string[] };
+export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean; boatsWarned: boolean; marketWarned: boolean; evacuated: boolean; archiveShelfSettled: boolean; suriOfferedHelp?: boolean }; clues: Record<ClueId, boolean>; surge: number; reflector: "none" | "glass-prism" | "hand-mirror" | "improvised"; ending: "none" | "balanced" | "diverted" | "shuttered" | "deferred"; dial: "unset" | "balanced" | "diverted" | "shut"; beacon: "dark" | "lit"; journal: string[] };
 export function initialWorld(): WorldState {
   return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive", "weather-crate": "market", "colored-twine": "market" },
     flags: { pumpOpen: false, stairOpen: false, lineFound: false, pumpBraced: false, boatsWarned: false, marketWarned: false, evacuated: false, archiveShelfSettled: false },
@@ -48,7 +48,7 @@ export function examine(world: WorldState, room: RoomId, target: string): string
 
 export function talk(world: WorldState, room: RoomId, npc: string): { text: string; clue: ClueId } | null {
   if (room === "tavern" && npc === "pell") return { text: "Pell points to the survey plate: balance the harbor pressure before lighting the beacon.", clue: "plateRead" };
-  if (room === "market" && npc === "suri") return { text: "Suri demonstrates the middle BALANCE mark on her slate; the market route leads to the Pump House.", clue: "marketPatternHeard" };
+  if (room === "market" && npc === "suri") return { text: "Suri demonstrates the middle BALANCE mark on her slate and offers to help at the Pump House.", clue: "marketPatternHeard" };
   if ((room === "tower" || room === "quay") && npc === "mara") return { text: "Mara explains: BALANCE then LIGHT protects both shores. DIVERT spares the Quay but floods the Market run. SHUT keeps the Market dry but leaves the beacon dark; warn the boats. Deferring repairs needs a town evacuation.", clue: "stakesKnown" };
   return null;
 }
