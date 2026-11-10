@@ -520,6 +520,36 @@ test("Archive item choice on a clean result does not leave the item", async () =
   assert.equal(saved.inventory[saved.owner].includes("colored-twine"), true);
 });
 
+test("Archive CAS retry reuses dice and rechecks carried item after a competing claim", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move market market");
+  await f.run("take colored-twine twine");
+  await f.run("move quay quay");
+  await f.run("move tower tower");
+  await f.run("open tower-stair stair");
+  await f.run("move archive archive");
+  const original = f.store.compareAndApply.bind(f.store);
+  let conflicted = false;
+  f.store.compareAndApply = async (key: string, comparison: string, intent: any) => {
+    if (!conflicted) {
+      conflicted = true;
+      const concurrent = structuredClone([...f.rows.values()][0]);
+      concurrent.world.items["colored-twine"] = "archive";
+      concurrent.inventory[concurrent.owner] = concurrent.inventory[concurrent.owner].filter((item: string) => item !== "colored-twine");
+      assert.equal((await original(key, comparison, { ...intent, value: concurrent })).status, "applied");
+    }
+    return original(key, comparison, intent);
+  };
+  let draws = 0;
+  const denied = await f.run("risk archive-shelf grit colored-twine quay shelf", undefined, () => { draws++; return 3; });
+  assert.match(denied, /Carry the chosen item/);
+  assert.equal(draws, 2);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.flags.archiveShelfSettled, false);
+  assert.equal(saved.receipts[JSON.stringify([saved.owner, "shelf"])], undefined);
+});
+
 test("zero-Resolve Archive cost respects selected retreat room and breather", async () => {
   const f = fixture();
   await f.run("create start"); await f.run("move tower go1"); await f.run("open tower-stair stair1"); await f.run("move archive go2");

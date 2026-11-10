@@ -201,7 +201,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
   // The namespace is retained. Agent and conversation identity are both part of the key,
   // and the stored binding must still match before any response or effect.
   const key = JSON.stringify([id.agentId, id.sessionId, target]);
-  let pumpRoll: Roll | undefined;
+  let riskRoll: Roll | undefined;
   for (let attempts = 0; attempts < 5; attempts++) {
     ctx.assertOwnerCurrent!();
     const observed = await store.observe(key);
@@ -321,9 +321,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
           if (current.world.flags.archiveShelfSettled) return "The shelf hazard is already settled.";
           if (leaveItem && current.world.items[leaveItem as ItemId] !== id.actor) return "Carry the chosen item before risking the shelf.";
         }
-        // Keep the Pump dice across internal CAS retries. Recompute the effect from the latest row.
-        const result = pump ? (pumpRoll ??= roll("grit", current.attributes[id.actor], die))
-          : roll(choice as Attribute, current.attributes[id.actor], die);
+        // Keep dice across internal CAS retries. Recompute costs against the fresh row.
+        const result = riskRoll ??= roll(pump ? "grit" : choice as Attribute, current.attributes[id.actor], die);
         const complication = result.band === "complication";
         const mixed = result.band === "cost";
         const surgeCost = complication || (pump && mixed && choice === "surge");
