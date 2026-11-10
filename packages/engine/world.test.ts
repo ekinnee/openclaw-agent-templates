@@ -108,3 +108,18 @@ test("a committed roll replays exactly without calling randomness again", async 
   const saved = [...f.rows.values()][0];
   assert.deepEqual(saved.receipts[JSON.stringify([saved.owner, "risky"])].roll.dice, [3, 3]);
 });
+
+test("ending is an explicit committed choice, cannot be rewritten, and updates aggregate status", async () => {
+  const f = fixture();
+  await f.run("create start");
+  assert.match(await f.run("finish balanced early"), /Beacon Tower/);
+  assert.match(await f.run("move tower travel"), /Beacon Tower/);
+  const ending = await f.run("finish balanced final");
+  assert.match(ending, /Committed balanced ending/);
+  assert.equal(await f.run("finish balanced final"), ending);
+  assert.match(await f.run("finish diverted changed"), /committed ending/);
+  assert.match(await f.run("recap"), /Ending: balanced/);
+  const saved = [...f.rows.values()][0];
+  assert.equal(saved.world.ending, "balanced");
+  assert.equal(saved.world.journal.filter((event: string) => event.includes("chose the balanced ending")).length, 1);
+});

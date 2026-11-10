@@ -26,7 +26,7 @@ type Game = {
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "brace" | "recap" | "roll"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "brace" | "recap" | "roll" | "finish"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -53,6 +53,8 @@ function parse(args: string | undefined): Command | null {
     return { verb: "brace", target: words[1], requestId: words[2] };
   if (words[0] === "roll" && words.length === 3 && ["grit", "wits", "charm"].includes(words[1]) && token.test(words[2]))
     return { verb: "roll", target: words[1], requestId: words[2] };
+  if (words[0] === "finish" && words.length === 3 && ["balanced", "diverted", "shuttered", "deferred"].includes(words[1]) && token.test(words[2]))
+    return { verb: "finish", target: words[1], requestId: words[2] };
   return null;
 }
 
@@ -93,13 +95,14 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id>";
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | roll <grit|wits|charm> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
   if (!record(game) || !record(game.players) || !record(game.approved) || !record(game.receipts) ||
       !record(game.inventory) || !record(game.attributes) || !record(game.resolve) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) ||
       !Array.isArray(game.world.journal) || game.world.journal.length > MAX_RECEIPTS ||
+      !["none", "balanced", "diverted", "shuttered", "deferred"].includes(game.world.ending) ||
       !game.world.journal.every((entry) => typeof entry === "string" && entry.length <= 256) ||
       typeof game.id !== "string" || !/^[0-9a-f-]{36}$/.test(game.id) ||
       typeof game.agentId !== "string" || typeof game.sessionId !== "string" || typeof game.destination !== "string" ||
@@ -161,7 +164,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
       ctx.assertOwnerCurrent!();
       if (cmd.verb === "inventory") return `Inventory: ${current.inventory[id.actor]?.join(", ") || "empty"}. Version ${current.version}.`;
-      if (cmd.verb === "recap") return `Public journal: ${current.world.journal.slice(-8).join("; ") || "no discoveries"}. Version ${current.version}.`;
+      if (cmd.verb === "recap") return `Public journal: ${current.world.journal.slice(-8).join("; ") || "no discoveries"}. Ending: ${current.world.ending}. Version ${current.version}.`;
     }
     const rkey = receiptKey(id.actor, cmd.requestId!);
     const prior = current?.receipts[rkey];
@@ -184,6 +187,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       text = `Created game ${next.id}. ${describe(next, id.actor)}`;
     } else {
       if (!current) return denied;
+      if (current.world.ending !== "none") return "This game has a committed ending; start a new session for a new game.";
       if (cmd.verb === "approve") {
         if (current.owner !== id.actor) return denied;
         const approvedActor = JSON.stringify([id.channel, id.accountId, cmd.sender]);
@@ -229,6 +233,15 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         next = { ...current, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. Version ${next.version}. No consequence committed.`;
         next.receipts[rkey] = { fingerprint: fingerprint(cmd), text, roll: result };
+      } else if (cmd.verb === "finish") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        const at = current.players[id.actor];
+        if (cmd.target !== "deferred" && at !== "tower") return "Operate the ending controls from Beacon Tower.";
+        // Mara can help fit an improvised reflector: neither the prism nor mirror is a required quest key.
+        next = { ...current, world: { ...current.world, ending: cmd.target as WorldState["ending"],
+          journal: [...current.world.journal, `The party chose the ${cmd.target} ending.`] },
+          receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Committed ${cmd.target} ending. Version ${next.version}.`;
       } else if (cmd.verb === "brace") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
@@ -289,6 +302,7 @@ export async function readGameStats(
   client?.assertCurrent?.();
   if (rows.length > storeOptions.maxEntries || !permitted()) return null;
   const games: { gameId: string; label: string; playerCount: number; acceptedActions: number }[] = [];
+  let completedGames = 0;
   const ids = new Set<string>();
   for (const { key, value: game } of rows) {
     // A legacy/malformed row makes the entire aggregate unavailable rather than falsely low.
@@ -305,6 +319,7 @@ export async function readGameStats(
         Object.keys(game.players).length < 1 || Object.keys(game.players).length > MAX_PLAYERS ||
         !validGame(game, key) || !permitted()) return null;
     ids.add(game.id);
+    if (game.world.ending !== "none") completedGames++;
     games.push({ gameId: game.id, label: `Game ${games.length + 1}`, playerCount: Object.keys(game.players).length,
       acceptedActions: game.version });
   }
@@ -312,7 +327,7 @@ export async function readGameStats(
   if (!permitted()) return null;
   const asOfVersion = games.reduce((sum, game) => sum + game.acceptedActions, 0);
   if (!Number.isSafeInteger(asOfVersion)) return null;
-  return { totalGames: games.length, activeGames: games.length, completedGames: 0,
+  return { totalGames: games.length, activeGames: games.length - completedGames, completedGames,
     acceptedActions: asOfVersion, games, asOfVersion, status: "complete" };
 }
 
