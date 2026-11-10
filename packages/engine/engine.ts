@@ -4,9 +4,10 @@ import { Buffer } from "node:buffer";
 import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import type { PluginSessionActionContext } from "openclaw/plugin-sdk/plugin-entry";
+import { canMove, examine, initialWorld, itemId, roomId, viewRoom, type ItemId, type RoomId, type WorldState } from "./world.js";
 
 type Store = PluginStateKeyedStore<Game, 2>;
-type Position = "quay" | "market";
+type Position = RoomId;
 type Receipt = { fingerprint: string; text: string };
 type Game = {
   id: string;
@@ -17,10 +18,12 @@ type Game = {
   owner: string;
   approved: Record<string, true>;
   players: Record<string, Position>;
+  inventory: Record<string, ItemId[]>;
+  world: WorldState;
   receipts: Record<string, Receipt>;
   version: number;
 };
-type Command = { verb: "create" | "approve" | "join" | "look" | "move"; requestId?: string; direction?: Position; gameId?: string; sender?: string };
+type Command = { verb: "create" | "approve" | "join" | "look" | "move" | "take" | "inventory" | "examine" | "open" | "recap"; requestId?: string; direction?: Position; gameId?: string; sender?: string; target?: string };
 
 const token = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_GAME_BYTES = 65536;
@@ -29,13 +32,20 @@ const MAX_RECEIPTS = 64;
 function parse(args: string | undefined): Command | null {
   const words = (args ?? "").trim().split(/\s+/);
   if (words[0] === "look" && words.length === 1) return { verb: "look" };
+  if (words[0] === "inventory" && words.length === 1) return { verb: "inventory" };
+  if (words[0] === "recap" && words.length === 1) return { verb: "recap" };
+  if (words[0] === "examine" && words.length === 2 && token.test(words[1])) return { verb: "examine", target: words[1] };
   if (words[0] === "create" && words.length === 2 && token.test(words[1])) return { verb: "create", requestId: words[1] };
   if (words[0] === "approve" && words.length === 3 && words[1].length <= 256 && words[1].trim() && token.test(words[2]))
     return { verb: "approve", sender: words[1], requestId: words[2] };
   if (words[0] === "join" && words.length === 3 && /^[0-9a-f-]{36}$/.test(words[1]) && token.test(words[2]))
     return { verb: "join", gameId: words[1], requestId: words[2] };
-  if (words[0] === "move" && words.length === 3 && (words[1] === "quay" || words[1] === "market") && token.test(words[2]))
+  if (words[0] === "move" && words.length === 3 && roomId(words[1]) && token.test(words[2]))
     return { verb: "move", direction: words[1] as Position, requestId: words[2] };
+  if (words[0] === "take" && words.length === 3 && itemId(words[1]) && token.test(words[2]))
+    return { verb: "take", target: words[1], requestId: words[2] };
+  if (words[0] === "open" && words.length === 3 && (words[1] === "pump-hatch" || words[1] === "tower-stair") && token.test(words[2]))
+    return { verb: "open", target: words[1], requestId: words[2] };
   return null;
 }
 
@@ -72,14 +82,11 @@ function bound(game: Game, id: Identity, target: string): boolean {
     game.sessionKey === id.sessionKey && game.destination === target;
 }
 function describe(game: Game, actor: string): string {
-  const position = game.players[actor];
-  return position === "quay"
-    ? `Lantern Quay. The beacon is dark. Exits: market. Game ${game.id}; version ${game.version}.`
-    : `Tide Market. The stalls stand quiet. Exits: quay. Game ${game.id}; version ${game.version}.`;
+  return `${viewRoom(game.world, game.players[actor], actor)} Game ${game.id}; version ${game.version}.`;
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
-function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null]); }
-const help = "Usage: /ck create <request-id> | approve <sender-id> <request-id> | join <game-id> <request-id> | look | move <quay|market> <request-id>";
+function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
+const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> | inventory | recap | open <pump-hatch|tower-stair> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 
 /** Pure owner over an action-bound V2 state store; a conflict is the only retryable outcome. */
@@ -104,10 +111,21 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
     ctx.assertOwnerCurrent!();
     const current = observed.value;
     if (current && !bound(current, id, target)) return denied;
+    // A prior prototype's row is not a valid world save; never silently reset it.
+    if (current && (!current.world || !current.inventory || !current.world.items || !current.world.flags || !Array.isArray(current.world.journal) ||
+        (Object.hasOwn(current.players, id.actor) && !roomId(current.players[id.actor])))) return denied;
     if (cmd.verb === "look") {
       if (!current || !Object.hasOwn(current.players, id.actor)) return denied;
       ctx.assertOwnerCurrent!();
       return describe(current, id.actor);
+    }
+    if (cmd.verb === "inventory" || cmd.verb === "recap" || cmd.verb === "examine") {
+      if (!current || !Object.hasOwn(current.players, id.actor)) return denied;
+      if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
+      ctx.assertOwnerCurrent!();
+      if (cmd.verb === "inventory") return `Inventory: ${current.inventory[id.actor]?.join(", ") || "empty"}. Version ${current.version}.`;
+      if (cmd.verb === "recap") return `Public journal: ${current.world.journal.slice(-8).join("; ") || "no discoveries"}. Version ${current.version}.`;
+      return `${examine(current.world, current.players[id.actor], cmd.target!) ?? "Nothing relevant is visible here."} Version ${current.version}.`;
     }
     const rkey = receiptKey(id.actor, cmd.requestId!);
     const prior = current?.receipts[rkey];
@@ -124,7 +142,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
       next = {
         id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
         sessionKey: id.sessionKey, destination: target, owner: id.actor,
-        approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, receipts: {}, version: 1,
+        approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
       };
       text = `Created game ${next.id}. ${describe(next, id.actor)}`;
     } else {
@@ -139,13 +157,30 @@ export async function runCommand(ctx: PluginCommandContext, store: Store): Promi
         if (cmd.gameId !== current.id) return denied;
         if (!Object.hasOwn(current.approved, id.actor)) return denied;
         if (!Object.hasOwn(current.players, id.actor) && Object.keys(current.players).length >= MAX_PLAYERS) return "Game is full.";
-        next = { ...current, players: { ...current.players, [id.actor]: current.players[id.actor] ?? "quay" }, receipts: { ...current.receipts }, version: current.version + 1 };
+        next = { ...current, players: { ...current.players, [id.actor]: current.players[id.actor] ?? "quay" }, inventory: { ...current.inventory, [id.actor]: current.inventory[id.actor] ?? [] }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Joined game ${next.id}. ${describe(next, id.actor)}`;
-      } else {
+      } else if (cmd.verb === "move") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
+        if (current.players[id.actor] !== cmd.direction && !canMove(current.world, current.players[id.actor], cmd.direction!)) return "That exit is blocked or not connected.";
         const alreadyThere = current.players[id.actor] === cmd.direction;
         next = { ...current, players: { ...current.players, [id.actor]: cmd.direction! }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `${alreadyThere ? "Already there." : "Moved."} ${describe(next, id.actor)}`;
+      } else if (cmd.verb === "take") {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        const item = cmd.target as ItemId;
+        if (current.world.items[item] !== current.players[id.actor]) return "That item is not available here.";
+        next = { ...current, world: { ...current.world, items: { ...current.world.items, [item]: id.actor }, journal: [...current.world.journal, `An item was collected in ${current.players[id.actor]}.`] },
+          inventory: { ...current.inventory, [id.actor]: [...(current.inventory[id.actor] ?? []), item] }, receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Collected ${item}. Version ${next.version}.`;
+      } else {
+        if (!Object.hasOwn(current.players, id.actor)) return denied;
+        const at = current.players[id.actor];
+        if ((cmd.target === "pump-hatch" && at !== "pump" && at !== "archive") ||
+            (cmd.target === "tower-stair" && at !== "tower" && at !== "archive")) return "That mechanism is not here.";
+        const flags = { ...current.world.flags, [cmd.target === "pump-hatch" ? "pumpOpen" : "stairOpen"]: true };
+        next = { ...current, world: { ...current.world, flags, journal: [...current.world.journal, `A route to the Archive was opened.`] },
+          receipts: { ...current.receipts }, version: current.version + 1 };
+        text = `Opened ${cmd.target}. Version ${next.version}.`;
       }
     }
     // Prevent unbounded retained rows: reject before a receipt can be silently evicted.

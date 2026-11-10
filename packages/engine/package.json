@@ -10,7 +10,7 @@
     "controlUi": "./browser/index.ts"
   },
   "scripts": {
-    "test": "node --import tsx --test ./engine.test.ts ./browser/index.test.ts"
+    "test": "node --import tsx --test ./engine.test.ts ./world.test.ts ./browser/index.test.ts"
   },
   "peerDependencies": {
     "openclaw": "2026.11.2"
