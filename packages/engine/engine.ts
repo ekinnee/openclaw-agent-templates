@@ -111,7 +111,7 @@ export async function scenePrompt(ctx: PluginCommandContext, store: Store): Prom
   const key = JSON.stringify([id.agentId, id.sessionId, target]);
   const { value: game } = await store.observe(key);
   ctx.assertOwnerCurrent!();
-  if (!game || !bound(game, id, target) || !validGame(game, key) || !Object.hasOwn(game.players, id.actor)) return null;
+  if (!game || !bound(game, id, target) || !validGame(game, key) || game.owner !== id.actor || !Object.hasOwn(game.players, id.actor)) return null;
   if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return null;
   ctx.assertOwnerCurrent!();
   const projection = {

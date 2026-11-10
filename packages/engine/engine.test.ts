@@ -60,8 +60,22 @@ test("scene continuation receives only an authorized committed player projection
   assert.match(prompt!, /Lantern Quay.*asOfVersion/);
   assert.doesNotMatch(prompt!, /bindingId|destination|approved|glass-prism|harbor-plan|weather-crate/);
   assert.equal(await scenePrompt(f.context("scene", { senderId: "bob", senderIsOwner: false, assertOwnerCurrent: undefined }), f.store), null);
+  assert.equal(await scenePrompt(f.context("scene", { senderId: "bob" }), f.store), null);
   f.setBinding({ ...f.binding, bindingId: "new-binding" });
   assert.equal(await scenePrompt(f.context("scene"), f.store), null);
+});
+
+test("scene read refuses owner demotion or binding change across awaited state work", async () => {
+  const demoted = fixture();
+  await runCommand(demoted.context("create start"), demoted.store);
+  const observe = demoted.store.observe!.bind(demoted.store);
+  demoted.store.observe = async (key) => { const value = await observe(key); demoted.revoke(); return value; };
+  await assert.rejects(() => scenePrompt(demoted.context("scene"), demoted.store), /owner no longer current/);
+  const rebound = fixture();
+  await runCommand(rebound.context("create start"), rebound.store);
+  const read = rebound.store.observe!.bind(rebound.store);
+  rebound.store.observe = async (key) => { const value = await read(key); rebound.setBinding({ ...rebound.binding, bindingId: "rebound" }); return value; };
+  assert.equal(await scenePrompt(rebound.context("scene"), rebound.store), null);
 });
 
 test("registered scene command hands a bounded committed projection to the agent", async () => {
