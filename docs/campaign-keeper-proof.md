@@ -34,6 +34,10 @@ At `e3caccf`, the engine spike gained a native Control UI widget and an opt-in `
 
 On this worktree, 12 focused tests passed using temporary local SDK/esbuild links, then the links were removed. `plugins build --root packages/engine --check` reported metadata up to date. These are fixture/browser-DOM tests and package checks, **not** a rendered Control UI installation or live data proof. The opt-in widget remains uninstalled; the engine is still only a two-room owner-only spike. The read model scans bounded committed rows but is not a transactionally consistent cross-row snapshot. No second human identity, disposable restart, or full game was tested.
 
+## Authored-world and rules progress (local only)
+
+After the earlier proof snapshots, `227ce9d` added a six-room map, legal exits, limited room-scoped text, unique item claims, inventory and a public journal. Independent read-only review found hidden-item bypass, mutable-save validation and Pump shortcut gaps. `8ccdff4` fixed the hidden safety-line discovery and added fail-closed save validation, while explicitly labeling `open pump-hatch` a prototype shortcut rather than a completed cooperative obstacle. `27ae93d` added original 2d6/Resolve rule primitives; `fdb7c10` added default attributes and replayable engine-generated roll receipts, without applying hit/damage or story consequences. Seventeen focused engine/rules tests passed on the local fake-store harness. This is **not** the complete six-room adventure or live multiplayer engine; earlier dated proof above describes the state at those commits, not the present code.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
