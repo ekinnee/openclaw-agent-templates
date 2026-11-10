@@ -52,6 +52,27 @@ test("owner authority and approved destination are mandatory", async () => {
   assert.match(await runCommand(f.context("look"), f.store), /unavailable/);
 });
 
+test("owner chooses one of the authored solo archetypes at creation without replay switching", async () => {
+  for (const [archetype, attributes] of [
+    ["quay-runner", { grit: 1, wits: 2, charm: 0 }],
+    ["tidehand", { grit: 2, wits: 1, charm: 0 }],
+    ["lantern-singer", { grit: 0, wits: 1, charm: 2 }],
+  ] as const) {
+    const f = fixture();
+    const command = `create ${archetype} start`;
+    const created = await runCommand(f.context(command), f.store);
+    assert.match(created, new RegExp(`with ${archetype}`));
+    const saved = [...f.rows.values()][0];
+    assert.deepEqual(saved.attributes[saved.owner], attributes);
+    assert.equal(await runCommand(f.context(command), f.store), created);
+    assert.match(await runCommand(f.context("create start"), f.store), /already used/);
+    assert.equal([...f.rows.values()][0].version, 1);
+  }
+  const f = fixture();
+  assert.match(await runCommand(f.context("create unknown start"), f.store), /Usage:/);
+  assert.equal(f.rows.size, 0);
+});
+
 test("scene continuation receives only an authorized committed player projection", async () => {
   const f = fixture();
   assert.equal(await scenePrompt(f.context("scene"), f.store), null);

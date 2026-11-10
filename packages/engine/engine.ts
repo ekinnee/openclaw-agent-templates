@@ -41,6 +41,8 @@ function parse(args: string | undefined): Command | null {
   if (words[0] === "examine" && words.length === 3 && token.test(words[1]) && token.test(words[2])) return { verb: "examine", target: words[1], requestId: words[2] };
   if (words[0] === "talk" && words.length === 3 && ["pell", "suri", "mara"].includes(words[1]) && token.test(words[2])) return { verb: "talk", target: words[1], requestId: words[2] };
   if (words[0] === "create" && words.length === 2 && token.test(words[1])) return { verb: "create", requestId: words[1] };
+  if (words[0] === "create" && words.length === 3 && ["quay-runner", "tidehand", "lantern-singer"].includes(words[1]) && token.test(words[2]))
+    return { verb: "create", target: words[1], requestId: words[2] };
   if (words[0] === "approve" && words.length === 3 && words[1].length <= 256 && words[1].trim() && token.test(words[2]))
     return { verb: "approve", sender: words[1], requestId: words[2] };
   if (words[0] === "join" && words.length === 3 && /^[0-9a-f-]{36}$/.test(words[1]) && token.test(words[2]))
@@ -117,7 +119,7 @@ function describe(game: Game, actor: string): string {
 }
 function receiptKey(actor: string, requestId: string): string { return JSON.stringify([actor, requestId]); }
 function fingerprint(cmd: Command): string { return JSON.stringify([cmd.verb, cmd.gameId ?? null, cmd.direction ?? null, cmd.sender ?? null, cmd.target ?? null]); }
-const help = "Usage: /ck create <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> [carried-item] <quay|tavern> <id> | risk <pump-hatch|tower-stair> <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
+const help = "Usage: /ck create [quay-runner|tidehand|lantern-singer] <id> | approve <sender> <id> | join <game> <id> | look | move <room> <id> | take <item> <id> | examine <object> <id> | talk <pell|suri|mara> <id> | inventory | recap | brace pump-lever <id> | open <pump-hatch|tower-stair> <id> | open pump-hatch suri <id> | fit <glass-prism|hand-mirror|improvised> <id> | roll <grit|wits|charm> <id> | risk archive-shelf <grit|wits> [carried-item] <quay|tavern> <id> | risk <pump-hatch|tower-stair> <resolve|surge> <quay|tavern> <id> | rest <id> | warn <boats|market|evacuate> <id> | finish <balanced|diverted|shuttered|deferred> <id>";
 const denied = "Campaign Keeper: unavailable or not authorized for this conversation.";
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
@@ -236,14 +238,17 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
     let text: string;
     if (cmd.verb === "create") {
       if (current) return "A game already exists in this conversation.";
+      const attributes = cmd.target === "tidehand" ? { grit: 2, wits: 1, charm: 0 } as const
+        : cmd.target === "lantern-singer" ? { grit: 0, wits: 1, charm: 2 } as const
+        : { grit: 1, wits: 2, charm: 0 } as const;
       next = {
         id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
         sessionKey: id.sessionKey, destination: target, owner: id.actor,
-        approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, attributes: { [id.actor]: { grit: 1, wits: 2, charm: 0 } },
+        approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, attributes: { [id.actor]: attributes },
         resolve: { [id.actor]: 6 }, rests: { [id.actor]: { before: false, after: false } },
         inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
       };
-      text = `Created game ${next.id}. ${describe(next, id.actor)}`;
+      text = `Created game ${next.id} with ${cmd.target ?? "quay-runner"}. ${describe(next, id.actor)}`;
     } else {
       if (!current) return denied;
       if (current.world.ending !== "none") return "This game has a committed ending; start a new session for a new game.";
