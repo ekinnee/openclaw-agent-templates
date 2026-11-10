@@ -52,6 +52,10 @@ The Pump brace is an improvised solo route, not a full two-player handoff; numer
 
 An additional isolated probe invoked `runCommand` against the actual OpenClaw V2 keyed-state worker (not a mocked store) in a temporary directory. With a **synthetic owner context**, it accepted create, moved to Beacon Tower, and committed a `3+3+2=8` Wits roll. After closing the database and reopening a new store, `look` showed Beacon Tower and replay of the move and roll returned their original receipts without rerolling. The store held one game row at version 3. Output: `{"realV2":true,"commandCreate":true,"reopenRoom":"tower","sameRoll":true,"sameMove":true,"rows":1,"version":3}`; process exited 0 and the temporary state directory was removed. This is evidence for engine logic plus host storage persistence across a store reopen, **not** a Gateway restart, installed plugin, authenticated user, or multiplayer adapter test.
 
+## Multiplayer-aware disposable V2 checks (not multiplayer proof)
+
+A separate disposable real V2 worker probe started two game rows using the same host session key and different **synthetic** session IDs, observed the aggregate count of two, and reopened the store with both rows preserved. Two concurrent owner requests to claim the same unique safety line yielded exactly one accepted claim and one unavailable-item result; the winning game row held one copy. A synthetic non-owner command was denied. Output: `{"realV2":true,"distinctIncarnations":2,"winningClaims":1,"guestDenied":true,"reopenRows":2}`; process exited 0 and its temporary state directory was removed. This tests the state owner with synthetic contexts against the actual V2 store. It **does not** prove two authenticated people, a real channel adapter, safe non-owner gameplay, a Gateway restart, or installed plugin behavior.
+
 ## Required external acceptance still open
 
 - Select and approve one exact test conversation/channel/thread, and demonstrate two distinct authenticated senders through its real command adapter. Do not loosen global allowlists or mention gating.
