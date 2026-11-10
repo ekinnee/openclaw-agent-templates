@@ -122,7 +122,7 @@ function validGame(game: Game, key: string): boolean {
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
       ["pumpOpen", "stairOpen", "lineFound", "pumpBraced", "boatsWarned", "marketWarned", "evacuated"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
-  if (["plateRead", "marketPatternHeard", "archivePlanRead", "balanceKnown"].some((clue) => typeof game.world.clues[clue] !== "boolean")) return false;
+  if (["plateRead", "marketPatternHeard", "archivePlanRead", "balanceKnown", "stakesKnown"].some((clue) => typeof game.world.clues[clue] !== "boolean")) return false;
   for (const item of ["safety-line", "hand-mirror", "glass-prism"] as ItemId[]) {
     const holder = game.world.items[item];
     if (typeof holder !== "string" || (!roomId(holder) && !Object.hasOwn(game.players, holder))) return false;
@@ -223,11 +223,10 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         const flags = { ...current.world.flags };
         const clues = { ...current.world.clues };
         if (at === "quay" && cmd.target === "cleat") flags.lineFound = true;
-        if (at === "tavern" && cmd.target === "survey-plate") { clues.plateRead = true; clues.balanceKnown = true; }
+        if (at === "tavern" && cmd.target === "survey-plate") { clues.plateRead = true; clues.balanceKnown = true; clues.stakesKnown = true; }
         if (at === "market" && cmd.target === "gauge-slate") { clues.marketPatternHeard = true; clues.balanceKnown = true; }
         if (at === "pump" && cmd.target === "pressure-diagram") clues.balanceKnown = true;
-        if (at === "archive" && cmd.target === "harbor-plan") { clues.archivePlanRead = true; clues.balanceKnown = true; }
-        if (at === "tower" && cmd.target === "dial") clues.balanceKnown = true;
+        if (at === "archive" && cmd.target === "harbor-plan") { clues.archivePlanRead = true; clues.balanceKnown = true; clues.stakesKnown = true; }
         const journal = [...current.world.journal, `An object was examined in ${at}.`];
         next = { ...current, world: { ...current.world, flags, clues, journal }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `${found} Version ${next.version}.`;
@@ -257,6 +256,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       } else if (cmd.verb === "finish") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         const at = current.players[id.actor];
+        if (!current.world.clues.stakesKnown) return "Learn the consequences from Mara, the survey plate, or the Archive plan before choosing an ending.";
         if (cmd.target !== "deferred" && at !== "tower") return "Operate the ending controls from Beacon Tower.";
         if (cmd.target === "shuttered" && !current.world.flags.boatsWarned) return "Warn the boats before shutting the beacon.";
         if (cmd.target === "deferred" && !current.world.flags.evacuated) return "Organize warning and evacuation before deferring repairs.";

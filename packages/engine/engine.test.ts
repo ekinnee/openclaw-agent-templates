@@ -150,6 +150,8 @@ test("game incarnations use trusted sessionId, empty sessions count zero, retry 
   assert.equal((await stats())?.acceptedActions, 2);
   assert.match(await runCommand(f.context("move market m1"), f.store), /Moved/);
   assert.equal((await stats())?.acceptedActions, 3);
+  assert.match(await runCommand(f.context("move quay return"), f.store), /Lantern Quay/);
+  assert.match(await runCommand(f.context("talk mara stakes"), f.store), /Deferring repairs needs/);
   assert.match(await runCommand(f.context("warn evacuate warning"), f.store), /Committed evacuate warning/);
   assert.match(await runCommand(f.context("finish deferred end"), f.store), /Committed deferred ending/);
   assert.equal((await stats())?.completedGames, 1);

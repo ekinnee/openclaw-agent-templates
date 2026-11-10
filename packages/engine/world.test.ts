@@ -112,6 +112,8 @@ test("a committed roll replays exactly without calling randomness again", async 
 test("ending is an explicit committed choice, cannot be rewritten, and updates aggregate status", async () => {
   const f = fixture();
   await f.run("create start");
+  assert.match(await f.run("finish balanced uninformed"), /Learn the consequences/);
+  assert.match(await f.run("talk mara stakes"), /DIVERT spares the Quay/);
   assert.match(await f.run("finish balanced early"), /Beacon Tower/);
   assert.match(await f.run("move tower travel"), /Beacon Tower/);
   const ending = await f.run("finish balanced final");
@@ -129,6 +131,8 @@ test("ending is an explicit committed choice, cannot be rewritten, and updates a
 test("deferred and shuttered endings require prior warning, while diversion commits its stated cost", async () => {
   const deferred = fixture();
   await deferred.run("create start");
+  assert.match(await deferred.run("finish deferred uninformed"), /Learn the consequences/);
+  await deferred.run("talk mara stakes");
   assert.match(await deferred.run("finish deferred premature"), /evacuation/);
   await deferred.run("warn evacuate warn1");
   assert.match(await deferred.run("finish deferred finish1"), /Residents have been warned and evacuated/);
@@ -138,6 +142,7 @@ test("deferred and shuttered endings require prior warning, while diversion comm
 
   const shuttered = fixture();
   await shuttered.run("create start");
+  await shuttered.run("talk mara stakes");
   await shuttered.run("move tower travel");
   assert.match(await shuttered.run("finish shuttered premature"), /Warn the boats/);
   await shuttered.run("warn boats warn1");
@@ -147,6 +152,10 @@ test("deferred and shuttered endings require prior warning, while diversion comm
   const diverted = fixture();
   await diverted.run("create start");
   await diverted.run("move tower travel");
+  assert.match(await diverted.run("finish diverted uninformed"), /Learn the consequences/);
+  assert.match(await diverted.run("examine dial insufficient"), /marked/);
+  assert.match(await diverted.run("finish diverted still-uninformed"), /Learn the consequences/);
+  await diverted.run("talk mara stakes");
   assert.match(await diverted.run("finish diverted final"), /lost stock/);
   assert.equal([...diverted.rows.values()][0].world.beacon, "lit");
 });

@@ -10,12 +10,12 @@ export const rooms = {
 } as const;
 export type RoomId = keyof typeof rooms;
 export type ItemId = "safety-line" | "hand-mirror" | "glass-prism";
-export type ClueId = "plateRead" | "marketPatternHeard" | "archivePlanRead" | "balanceKnown";
+export type ClueId = "plateRead" | "marketPatternHeard" | "archivePlanRead" | "balanceKnown" | "stakesKnown";
 export type WorldState = { items: Record<ItemId, RoomId | string>; flags: { pumpOpen: boolean; stairOpen: boolean; lineFound: boolean; pumpBraced: boolean; boatsWarned: boolean; marketWarned: boolean; evacuated: boolean }; clues: Record<ClueId, boolean>; ending: "none" | "balanced" | "diverted" | "shuttered" | "deferred"; dial: "unset" | "balanced" | "diverted" | "shut"; beacon: "dark" | "lit"; journal: string[] };
 export function initialWorld(): WorldState {
   return { items: { "safety-line": "quay", "hand-mirror": "tavern", "glass-prism": "archive" },
     flags: { pumpOpen: false, stairOpen: false, lineFound: false, pumpBraced: false, boatsWarned: false, marketWarned: false, evacuated: false },
-    clues: { plateRead: false, marketPatternHeard: false, archivePlanRead: false, balanceKnown: false },
+    clues: { plateRead: false, marketPatternHeard: false, archivePlanRead: false, balanceKnown: false, stakesKnown: false },
     ending: "none", dial: "unset", beacon: "dark", journal: [] };
 }
 export function roomId(value: string): value is RoomId { return Object.hasOwn(rooms, value); }
@@ -37,10 +37,10 @@ export function examine(world: WorldState, room: RoomId, target: string): string
   if (room === "quay" && target === "cleat" && world.items["safety-line"] === "quay") return "A reusable safety-line is coiled beneath the cleat.";
   if (target === "safety-line" && !world.flags.lineFound) return null;
   if (itemId(target) && world.items[target] === room) return `You see ${target} here.`;
-  if (room === "tavern" && target === "survey-plate") return "The brass survey plate shows the harbor controls: BALANCE, DIVERT, SHUT, then LIGHT.";
+  if (room === "tavern" && target === "survey-plate") return "The plate says: BALANCE then LIGHT protects both shores. DIVERT spares the Quay but floods the Market run; SHUT keeps the Market dry but leaves the beacon dark, so warn the boats.";
   if (room === "market" && target === "gauge-slate") return "Suri's slate marks a level middle setting between two channels.";
   if (room === "pump" && target === "pressure-diagram") return "A diagram shows a balanced notch and the lever controlling the archive hatch.";
-  if (room === "archive" && target === "harbor-plan") return "The harbor plan says the pressure clutch slipped; set BALANCE before lighting the beacon.";
+  if (room === "archive" && target === "harbor-plan") return "The harbor plan says the pressure clutch slipped: BALANCE then LIGHT protects both shores; DIVERT spares the Quay but floods the Market; SHUT keeps the Market dry, leaves the beacon dark, and requires warning the boats.";
   if (room === "tower" && target === "dial") return "The dial is marked BALANCE, DIVERT, SHUT; the lantern remains dark.";
   return null;
 }
@@ -48,6 +48,6 @@ export function examine(world: WorldState, room: RoomId, target: string): string
 export function talk(world: WorldState, room: RoomId, npc: string): { text: string; clue: ClueId } | null {
   if (room === "tavern" && npc === "pell") return { text: "Pell points to the survey plate: balance the harbor pressure before lighting the beacon.", clue: "plateRead" };
   if (room === "market" && npc === "suri") return { text: "Suri demonstrates the middle BALANCE mark on her slate; the market route leads to the Pump House.", clue: "marketPatternHeard" };
-  if ((room === "tower" || room === "quay") && npc === "mara") return { text: "Mara explains: BALANCE before LIGHT; DIVERT floods the Market run, while SHUT requires a warning to the boats.", clue: "balanceKnown" };
+  if ((room === "tower" || room === "quay") && npc === "mara") return { text: "Mara explains: BALANCE then LIGHT protects both shores. DIVERT spares the Quay but floods the Market run. SHUT keeps the Market dry but leaves the beacon dark; warn the boats. Deferring repairs needs a town evacuation.", clue: "stakesKnown" };
   return null;
 }
