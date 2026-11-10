@@ -169,3 +169,29 @@ test("a committed write with a lost reply reconciles by the same request ID with
   assert.equal([...f.rows.values()][0].version, 2);
   assert.match(await f.run("take safety-line uncertain"), /already used/);
 });
+
+test("NPCs and clue routes require room presence and persist facts before finale", async () => {
+  const f = fixture();
+  await f.run("create start");
+  assert.match(await f.run("talk suri wrong"), /not here/);
+  await f.run("move tavern go1");
+  const pell = await f.run("talk pell talk1");
+  assert.match(pell, /balance the harbor pressure/);
+  assert.equal(await f.run("talk pell talk1"), pell);
+  let saved = [...f.rows.values()][0];
+  assert.equal(saved.world.clues.plateRead, true);
+  assert.equal(saved.world.clues.balanceKnown, true);
+  await f.run("move market go2");
+  assert.match(await f.run("examine gauge-slate clue2"), /middle setting/);
+  assert.match(await f.run("talk suri talk2"), /middle BALANCE/);
+  saved = [...f.rows.values()][0];
+  assert.equal(saved.world.clues.marketPatternHeard, true);
+  await f.run("move pump go3");
+  await f.run("brace pump-lever brace1");
+  await f.run("open pump-hatch hatch1");
+  await f.run("move archive go4");
+  assert.match(await f.run("examine harbor-plan clue3"), /pressure clutch slipped/);
+  saved = [...f.rows.values()][0];
+  assert.equal(saved.world.clues.archivePlanRead, true);
+  assert.match(await f.run("talk mara wrong2"), /not here/);
+});
