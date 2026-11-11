@@ -287,6 +287,30 @@ test("stats reject cross-agent readers, revoked roles, malformed rows, and capac
   assert.equal(await read(base), null);
 });
 
+test("unknown and older save schemas fail closed without rewriting the game or stats", async () => {
+  const f = fixture();
+  assert.match(await runCommand(f.context("create start"), f.store), /Created game/);
+  const key = [...f.rows.keys()][0];
+  const original = structuredClone(f.rows.get(key));
+  assert.equal(original.saveSchemaVersion, 1);
+  const statsContext = { agentId: "keeper", sessionKey: "agent:keeper:chat:room",
+    client: { scopes: ["operator.read"], allowsAgent: () => true, isSharedGateway: () => false,
+      assertCurrent: () => {} } } as any;
+  for (const incompatible of [undefined, 0, 2, "1"]) {
+    const row = structuredClone(original);
+    if (incompatible === undefined) delete row.saveSchemaVersion;
+    else row.saveSchemaVersion = incompatible;
+    f.rows.set(key, row);
+    assert.match(await runCommand(f.context("look"), f.store), /unavailable/);
+    assert.match(await runCommand(f.context("move market stale"), f.store), /unavailable/);
+    assert.equal(await readGameStats(statsContext, f.store, "keeper"), null);
+    assert.deepEqual(f.rows.get(key), row);
+  }
+  f.rows.set(key, original);
+  assert.match(await runCommand(f.context("look"), f.store), /Lantern Quay/);
+  assert.equal((await readGameStats(statsContext, f.store, "keeper"))?.activeGames, 1);
+});
+
 test("stats action and widget descriptor share explicit opt-in and read scope", async () => {
   const f = fixture();
   const registered: any[] = [];

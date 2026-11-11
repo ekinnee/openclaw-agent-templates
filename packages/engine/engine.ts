@@ -11,6 +11,7 @@ type Store = PluginStateKeyedStore<Game, 2>;
 type Position = RoomId;
 type Receipt = { fingerprint: string; text: string; roll?: Roll };
 type Game = {
+  saveSchemaVersion: 1;
   id: string;
   agentId: string;
   sessionId: string;
@@ -150,6 +151,7 @@ export async function scenePrompt(ctx: PluginCommandContext, store: Store): Prom
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function validGame(game: Game, key: string): boolean {
   if (!record(game) || !record(game.players) || !record(game.approved) || !record(game.receipts) ||
+      game.saveSchemaVersion !== 1 ||
       !record(game.inventory) || !record(game.attributes) || !record(game.resolve) || !record(game.rests) || !record(game.world) || !record(game.world.items) || !record(game.world.flags) || !record(game.world.clues) ||
       !Array.isArray(game.world.journal) || game.world.journal.length > MAX_RECEIPTS ||
       !["none", "balanced", "diverted", "shuttered", "deferred"].includes(game.world.ending) ||
@@ -244,6 +246,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         : cmd.target === "lantern-singer" ? { grit: 0, wits: 1, charm: 2 } as const
         : { grit: 1, wits: 2, charm: 0 } as const;
       next = {
+        saveSchemaVersion: 1,
         id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
         sessionKey: id.sessionKey, destination: target, owner: id.actor,
         approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, attributes: { [id.actor]: attributes },
