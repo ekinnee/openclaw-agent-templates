@@ -7,7 +7,15 @@
     "extensions": [
       "./index.ts"
     ],
-    "controlUi": "./browser/index.ts"
+    "controlUi": "./browser/index.ts",
+    "compat": {
+      "pluginApi": ">=2026.11.2",
+      "minGatewayVersion": "2026.11.2"
+    },
+    "build": {
+      "openclawVersion": "2026.11.2",
+      "pluginSdkVersion": "2026.11.2"
+    }
   },
   "scripts": {
     "test": "node --import tsx --test ./engine.test.ts ./world.test.ts ./rules.test.ts ./browser/index.test.ts"
