@@ -2,8 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import plugin from "./index.ts";
 
+const launcherRegistrations = {
+  registerPage: () => () => {},
+  registerNavigation: () => () => {},
+  registerPanel: () => () => {},
+};
+
 class Element {
   textContent = "";
+  style: Record<string, string> = {};
   children: Element[] = [];
   attrs: Record<string, string> = {};
   append(...children: Element[]) { this.children.push(...children); }
@@ -26,7 +33,7 @@ test("native widget reads only selected session stats and never renders raw game
         return new Promise((done) => { resolve = done; });
       },
       subscribe: (cb: () => void) => { listener = cb; return () => { listener = () => {}; }; },
-      ui: { registerWidget: (item: unknown) => { widget = item; return () => {}; } },
+      ui: { ...launcherRegistrations, registerWidget: (item: unknown) => { widget = item; return () => {}; } },
     };
     plugin.activate(host as any);
     assert.equal(widget.id, "game-stats");
@@ -70,7 +77,7 @@ test("widget fails closed without read access and ignores stale responses after 
       connection: { connected: true, canRead: false },
       request: () => new Promise((resolve) => pending.push(resolve)),
       subscribe: () => () => {},
-      ui: { registerWidget: (item: unknown) => { widget = item; return () => {}; } },
+      ui: { ...launcherRegistrations, registerWidget: (item: unknown) => { widget = item; return () => {}; } },
     };
     plugin.activate(host as any);
     const container = new Element();
@@ -94,6 +101,48 @@ test("widget fails closed without read access and ignores stale responses after 
     assert.equal(container.children[0].children[1].textContent, "Statistics unavailable.");
     assert.doesNotMatch(JSON.stringify(container), /private server detail|42/);
     mounted.dispose();
+  } finally {
+    (globalThis as any).document = original;
+  }
+});
+
+test("New Game creates the native player chat before starting and opens only that chat", async () => {
+  const original = globalThis.document;
+  (globalThis as any).document = { createElement: () => new Element() };
+  try {
+    const target = { agentId: "player", sessionKey: "agent:player:dashboard:ck-play-test" };
+    let page: any;
+    const seen: unknown[] = [];
+    const host = {
+      async request(method: string, params: unknown) {
+        seen.push([method, params]);
+        if (method.endsWith("prepare")) return { ...target, requestId: "fixed" };
+        if (method === "sessions.create") return { key: target.sessionKey };
+        return { player: { room: "Lantern Quay", scene: "Opening scene" } };
+      },
+      sessions: { open: (address: unknown) => seen.push(["open", address]) },
+      ui: { ...launcherRegistrations, registerPage: (item: unknown) => { page = item; return () => {}; },
+        registerWidget: () => () => {}, openPanel: (id: unknown, address: unknown) => seen.push([id, address]) },
+    };
+    plugin.activate(host as any);
+    const container = new Element();
+    page.mount(container, { host, signal: new AbortController().signal });
+    const choice: any = container.children[0].children[2].children[0];
+    const button: any = container.children[0].children[3];
+    assert.equal(button.textContent, "New Game");
+    assert.equal(button.disabled, true);
+    await button.onclick();
+    assert.deepEqual(seen, []);
+    choice.value = "tidehand";
+    choice.onchange();
+    await button.onclick();
+    assert.deepEqual(seen, [
+      ["campaign-keeper.launch.prepare", undefined],
+      ["sessions.create", { agentId: "player", key: target.sessionKey, idempotencyKey: "fixed", displayName: "The Lantern Below · Player" }],
+      ["campaign-keeper.launch.start", { sessionKey: target.sessionKey, archetype: "tidehand" }],
+      ["open", target],
+      ["campaign-scene", target],
+    ]);
   } finally {
     (globalThis as any).document = original;
   }

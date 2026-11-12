@@ -1,17 +1,18 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { toolPluginMetadataSymbol } from "openclaw/plugin-sdk/tool-plugin";
 import { registerEngine } from "./engine.js";
+import { registerLauncher } from "./launcher.js";
 
 const entry = definePluginEntry({
   id: "campaign-keeper-engine-spike",
   name: "Campaign Keeper engine spike",
   description: "Minimal authenticated conversation-bound game command (not a full game)",
-  register: registerEngine,
+  register(api) {
+    registerEngine(api, registerLauncher(api));
+  },
 });
 
-// The 2026.11.2 plugins authoring builder reads static tool/feature metadata.
-// This command-only plugin has no agent tools; publish an empty tool contract
-// without registering an unnecessary agent-facing tool at runtime.
+// Publish the same agent tool contract used by the runtime factory.
 Object.defineProperty(entry, toolPluginMetadataSymbol, {
   value: {
     id: "campaign-keeper-engine-spike", name: "Campaign Keeper engine spike",
@@ -20,7 +21,12 @@ Object.defineProperty(entry, toolPluginMetadataSymbol, {
     configSchema: { type: "object", additionalProperties: false, properties: {
       dashboardEnabled: { type: "boolean" }, agentId: { type: "string", minLength: 1 },
     } },
-    tools: [],
+    tools: [{ name: "campaign_keeper_intent", label: "Campaign Keeper player intent", description: "Commit the current attributed player intent through the GM.",
+      parameters: { type: "object", additionalProperties: false, required: ["action", "requestId"], properties: {
+        action: { type: "string" }, requestId: { type: "string" }, target: { type: "string" },
+        gameId: { type: "string" }, sourceSessionKey: { type: "string" },
+        choice: { type: "string" }, retreat: { type: "string" }, item: { type: "string" }, helper: { type: "string" },
+      } } }],
   },
 });
 

@@ -137,3 +137,18 @@ The actual Control UI was **not** demonstrated: the portal view was blank; the d
 On `feat/campaign-keeper` from `1ca5e56`, `npm test` in `packages/engine` passed all 43 focused tests, including two browser fixtures. Temporary links resolved the local OpenClaw 2026.11.1 SDK and `tsx` and were removed after the run. The new cases cover Suri's offer, all Grit outcome bands, the mixed-band choice, surge cap, zero-Resolve retreat and recovery, a lost response after a real roll, and CAS conflicts. Independent review of the engine and test diff found no actionable P0–P2 issues.
 
 `openclaw templates validate .` passed on a temporary copy using the target 2026.11.2 CLI with isolated state. The local 2026.11.1 CLI rejected the existing `automations` manifest field. `git diff --check` passed. This proof covers command fixtures and Template structure. Installed solo play, real Gateway restart and narration remain open.
+
+
+## Authenticated playtest and Focus Week staging, November 12, 2026
+
+The first release target is solo play in ordinary chat with Keeper. A session-bound engine save retains the character, world, and action receipts. The browser launcher and multiplayer experiments remain development surfaces.
+
+The live isolated host used OpenClaw main at `ad5fb63b4b54834aa04152c2aef9c4f1bb548044` with the verified requester-profile implementation from [OpenClaw #189600](https://github.com/openclaw/openclaw/pull/189600) at `fabedf1d10bb952cfa91b21823ba1d57e4faad23`. The build is unreleased. Normal WebChat play requires that capability, and the engine refuses a request that lacks it.
+
+- In ordinary signed-in browser chat, the owner chose a Tidehand, switched away and back, and resumed the same save. The read-only look added no effect and the Tower move added exactly one receipt.
+- A separate signed-in Lantern Singer run reached a saved BALANCE ending using the Archive prism. That playthrough exposed a shortcut in the adventure. The revised engine requires the Pump-side pressure release in addition to a reflector for BALANCE. Archive-side opening grants access to the Pump House.
+- On a disposable Gateway using the same source build, a dedicated test login repeated the prism shortcut and received a no-effect refusal. A risky Pump release raised surge and enabled BALANCE. The completed save held one release and one ending receipt. Separate authenticated games proved DIVERT with and without a Market warning, SHUT with warned boats, and evacuation with deferred repairs.
+- A prior disposable Gateway restart recovered the same completed game. Keeper read the lit beacon, fitted reflector, and committed dial setting after reconnecting.
+- An earlier bounded agent-player experiment proved attributed join, movement and on-demand scene read. Reliable player-visible fan-out and source-session incarnation checks remain open for multiplayer.
+
+The engine, world, rules and browser suite passed 69 fixtures. The tested local engine archive has SHA-256 `df246bb4a1ea472458a47697344fec3b9972d60f87fd368533e402287d87ebd0`. Rebuilding the current server bundle reproduced the tested bytes. ClawHub's static package inspection passed, and local installation still reported unverified provenance. The Template validated and built reproducibly against the newer source-build loader, with an empty dependency list. See the [release handoff](campaign-keeper-playable-add-gate.md) for the released-host and portable Add gates.

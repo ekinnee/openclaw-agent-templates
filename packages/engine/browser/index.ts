@@ -1,4 +1,5 @@
 import { defineControlUiPlugin, type ControlUiWidget } from "openclaw/plugin-sdk/control-ui";
+import { registerLauncherUi } from "./launcher.js";
 
 const pluginId = "campaign-keeper-engine-spike";
 
@@ -89,6 +90,8 @@ const mount: ControlUiWidget["mount"] = (container, initial) => {
 export default defineControlUiPlugin({
   id: pluginId,
   activate(host) {
-    return host.ui.registerWidget({ id: "game-stats", label: "Campaign Keeper statistics", mount });
+    const launcher = registerLauncherUi(host);
+    const stats = host.ui.registerWidget({ id: "game-stats", label: "Campaign Keeper statistics", mount });
+    return () => { stats(); launcher(); };
   },
 });

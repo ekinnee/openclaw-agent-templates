@@ -1,5 +1,5 @@
-# First run — Campaign Keeper preview
+# First run with Keeper
 
-This source package has a complete GM adventure but not its authoritative engine plugin. Until an exact released dependency is declared, do not create a playable persistent campaign, accept joins, roll dice as an engine, or claim state survives restart. Explain this limitation plainly if someone opens the agent. An explicitly labeled *non-persistent story preview* is optional, but it is not game proof.
+Open an ordinary chat with Keeper and say **Start a new game**. Keeper offers Quay Runner, Tidehand, and Lantern Singer. Choose one to start at Lantern Quay. Reopen the same chat to continue a saved campaign.
 
-After a supported engine release is packaged and installed, verify the agent's tested narrow grants, one approved conversation binding and authenticated callers before creating a campaign. Then briefly ask about tone/content, offer the Quay Runner (or player-created attributes), and start at Lantern Quay. Do not demand a group to be online concurrently.
+The staging Template requires a released engine dependency and a compatible host for saved play. Keeper explains the missing prerequisite if its game tool is unavailable.

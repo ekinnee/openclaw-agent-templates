@@ -4,10 +4,15 @@ import { Buffer } from "node:buffer";
 import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginStateKeyedStore } from "openclaw/plugin-sdk/plugin-state-runtime";
 import type { PluginSessionActionContext } from "openclaw/plugin-sdk/plugin-entry";
-import { canMove, examine, initialWorld, itemId, itemIds, roomId, talk, viewRoom, type ItemId, type RoomId, type WorldState } from "./world.js";
+import { canMove, examine, initialWorld, itemId, itemIds, roomId, rooms, talk, viewRoom, type ItemId, type RoomId, type WorldState } from "./world.js";
 import { applyResolve, roll, validAttributes, type Attribute, type Attributes, type Roll } from "./rules.js";
+import { archetypes, archetypeIds, isArchetype, type Archetype } from "./characters.js";
 
-type Store = PluginStateKeyedStore<Game, 2>;
+import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/tool-plugin";
+
+export type Store = PluginStateKeyedStore<Game, 2>;
+export type LaunchSession = { agentId: string; sessionKey: string; sessionId: string; lifecycleRevision?: string };
+export type LaunchRoute = { keeper: LaunchSession; player: LaunchSession; profileId: string; assertCurrent: () => void };
 type Position = RoomId;
 type Receipt = { fingerprint: string; text: string; roll?: Roll };
 type Game = {
@@ -18,6 +23,7 @@ type Game = {
   sessionKey: string;
   destination: string;
   owner: string;
+  starterSession?: LaunchSession;
   approved: Record<string, true>;
   players: Record<string, Position>;
   attributes: Record<string, Attributes>;
@@ -42,7 +48,7 @@ function parse(args: string | undefined): Command | null {
   if (words[0] === "examine" && words.length === 3 && token.test(words[1]) && token.test(words[2])) return { verb: "examine", target: words[1], requestId: words[2] };
   if (words[0] === "talk" && words.length === 3 && ["pell", "suri", "mara"].includes(words[1]) && token.test(words[2])) return { verb: "talk", target: words[1], requestId: words[2] };
   if (words[0] === "create" && words.length === 2 && token.test(words[1])) return { verb: "create", requestId: words[1] };
-  if (words[0] === "create" && words.length === 3 && ["quay-runner", "tidehand", "lantern-singer"].includes(words[1]) && token.test(words[2]))
+  if (words[0] === "create" && words.length === 3 && isArchetype(words[1]) && token.test(words[2]))
     return { verb: "create", target: words[1], requestId: words[2] };
   if (words[0] === "approve" && words.length === 3 && words[1].length <= 256 && words[1].trim() && token.test(words[2]))
     return { verb: "approve", sender: words[1], requestId: words[2] };
@@ -86,22 +92,31 @@ function parse(args: string | undefined): Command | null {
 }
 
 function identity(ctx: PluginCommandContext) {
-  // No public callback revalidates ordinary non-owner authorization after an await.
-  // Until the SDK supplies one, even approved players cannot execute commands.
+  // This registered command context does not expose non-owner authorization revalidation.
+  // Channel-inbound authorization has a separate assertAuthorizedCurrent callback, but
+  // it is not handed to this command. Keep non-owner effects closed here.
+  const webchatOwner = ctx.channel === "webchat" && ctx.gatewayClientScopes?.includes("operator.admin") === true &&
+    ctx.sessionKey?.startsWith(`agent:${ctx.agentId}:`) === true;
   if (!ctx.isAuthorizedSender || !ctx.senderIsOwner || !ctx.assertOwnerCurrent ||
       !ctx.senderId?.trim() || ctx.senderId.length > 256 || !ctx.agentId?.trim() ||
-      !ctx.sessionKey?.trim() || !ctx.sessionId?.trim() || !ctx.channel?.trim() || !ctx.accountId?.trim()) return null;
+      !ctx.sessionKey?.trim() || !ctx.sessionId?.trim() || !ctx.channel?.trim() ||
+      (!webchatOwner && !ctx.accountId?.trim())) return null;
   return {
     agentId: ctx.agentId,
     sessionKey: ctx.sessionKey,
     sessionId: ctx.sessionId,
     channel: ctx.channel,
-    accountId: ctx.accountId,
-    actor: JSON.stringify([ctx.channel, ctx.accountId, ctx.senderId]),
+    accountId: webchatOwner ? "webchat-owner" : ctx.accountId!,
+    actor: JSON.stringify([ctx.channel, webchatOwner ? "webchat-owner" : ctx.accountId, ctx.senderId]),
   };
 }
 type Identity = NonNullable<ReturnType<typeof identity>>;
 function destination(ctx: PluginCommandContext, id: Identity, binding: Awaited<ReturnType<PluginCommandContext["getCurrentConversationBinding"]>>): string | null {
+  // WebChat has an authenticated operator but no channel-plugin binding adapter. Keep this
+  // route distinct from external channels and require a live admitted owner invocation.
+  if (ctx.channel === "webchat") return ctx.gatewayClientScopes?.includes("operator.admin") === true &&
+    ctx.sessionKey?.startsWith(`agent:${id.agentId}:`) && ctx.sessionId === id.sessionId
+      ? JSON.stringify(["webchat-owner", id.agentId, id.sessionKey, id.sessionId]) : null;
   // The host's resolved, approved conversation binding is authoritative. Raw from/to,
   // nullable transport fields and a session key alone cannot identify a destination.
   if (!binding || !binding.bindingId?.trim() || !binding.conversationId?.trim() ||
@@ -113,7 +128,10 @@ function destination(ctx: PluginCommandContext, id: Identity, binding: Awaited<R
     binding.conversationId, binding.parentConversationId ?? null, binding.threadId == null ? null : String(binding.threadId),
     ctx.from, ctx.to]);
 }
-function bound(game: Game, id: Identity, target: string): boolean {
+async function currentDestination(ctx: PluginCommandContext, id: Identity): Promise<string | null> {
+  return destination(ctx, id, ctx.channel === "webchat" ? null : await ctx.getCurrentConversationBinding());
+}
+function bound(game: Game, id: Pick<Identity, "agentId" | "sessionId" | "sessionKey">, target: string): boolean {
   return game.agentId === id.agentId && game.sessionId === id.sessionId &&
     game.sessionKey === id.sessionKey && game.destination === target;
 }
@@ -127,16 +145,16 @@ const denied = "Campaign Keeper: unavailable or not authorized for this conversa
 /** A narration request contains only a committed player-facing view, never the GM source or save row. */
 export async function scenePrompt(ctx: PluginCommandContext, store: Store): Promise<string | null> {
   const id = identity(ctx);
-  if (!id || !ctx.getCurrentConversationBinding || !store.observe) return null;
+  if (!id || !store.observe || (ctx.channel !== "webchat" && !ctx.getCurrentConversationBinding)) return null;
   ctx.assertOwnerCurrent!();
-  const target = destination(ctx, id, await ctx.getCurrentConversationBinding());
+  const target = await currentDestination(ctx, id);
   ctx.assertOwnerCurrent!();
   if (!target) return null;
   const key = JSON.stringify([id.agentId, id.sessionId, target]);
   const { value: game } = await store.observe(key);
   ctx.assertOwnerCurrent!();
   if (!game || !bound(game, id, target) || !validGame(game, key) || game.owner !== id.actor || !Object.hasOwn(game.players, id.actor)) return null;
-  if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return null;
+  if (await currentDestination(ctx, id) !== target) return null;
   ctx.assertOwnerCurrent!();
   const projection = {
     scene: viewRoom(game.world, game.players[id.actor], id.actor),
@@ -179,6 +197,7 @@ function validGame(game: Game, key: string): boolean {
   }
   if (Object.values(game.world.flags).some((flag) => typeof flag !== "boolean") ||
       ["pumpOpen", "stairOpen", "lineFound", "pumpBraced", "boatsWarned", "marketWarned", "evacuated", "archiveShelfSettled"].some((flag) => typeof game.world.flags[flag] !== "boolean")) return false;
+  if (game.world.flags.pressureRelieved && !game.world.flags.pumpOpen) return false;
   if (["plateRead", "marketPatternHeard", "archivePlanRead", "balanceKnown", "stakesKnown"].some((clue) => typeof game.world.clues[clue] !== "boolean")) return false;
   for (const item of itemIds) {
     const holder = game.world.items[item];
@@ -196,37 +215,56 @@ function validGame(game: Game, key: string): boolean {
 /** Pure owner over an action-bound V2 state store; a conflict is the only retryable outcome. */
 export async function runCommand(ctx: PluginCommandContext, store: Store, die?: () => number): Promise<string> {
   const id = identity(ctx);
-  if (!id || !store.observe || !store.compareAndApply || !ctx.getCurrentConversationBinding) return denied;
+  if (!id || !store.observe || !store.compareAndApply || (ctx.channel !== "webchat" && !ctx.getCurrentConversationBinding)) return denied;
   const cmd = parse(ctx.args);
   if (!cmd) return help;
   // Resolve *this invocation's* destination through the host, not user text.
   ctx.assertOwnerCurrent!();
-  const target = destination(ctx, id, await ctx.getCurrentConversationBinding());
+  const target = await currentDestination(ctx, id);
   ctx.assertOwnerCurrent!();
   if (!target) return denied;
+  return runTransition(id, target, cmd, store, {
+    assertCurrent: ctx.assertOwnerCurrent!, destination: () => currentDestination(ctx, id),
+  }, die);
+}
+
+type TransitionAuthority = {
+  assertCurrent: () => void;
+  destination: () => Promise<string | null>;
+  approvedActor?: (sourceSessionKey: string) => string;
+  starterSession?: LaunchSession;
+};
+function sameLaunchSession(a: LaunchSession | undefined, b: LaunchSession | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return a.agentId === b.agentId && a.sessionKey === b.sessionKey && a.sessionId === b.sessionId &&
+    a.lifecycleRevision === b.lifecycleRevision;
+}
+async function runTransition(id: Identity, target: string, cmd: Command, store: Store,
+  authority: TransitionAuthority, die?: () => number): Promise<string> {
   // The namespace is retained. Agent and conversation identity are both part of the key,
   // and the stored binding must still match before any response or effect.
   const key = JSON.stringify([id.agentId, id.sessionId, target]);
   let riskRoll: Roll | undefined;
   for (let attempts = 0; attempts < 5; attempts++) {
-    ctx.assertOwnerCurrent!();
+    authority.assertCurrent();
     const observed = await store.observe(key);
-    ctx.assertOwnerCurrent!();
-    if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
-    ctx.assertOwnerCurrent!();
+    authority.assertCurrent();
+    if (await authority.destination() !== target) return denied;
+    authority.assertCurrent();
     const current = observed.value;
-    if (current && !bound(current, id, target)) return denied;
+    if (cmd.gameId && cmd.gameId !== current?.id) return denied;
+    if (current && (!bound(current, id, target) || !sameLaunchSession(current.starterSession, authority.starterSession))) return denied;
     // A prior prototype's row is not a valid world save; never silently reset it.
     if (current && !validGame(current, key)) return denied;
     if (cmd.verb === "look") {
       if (!current || !Object.hasOwn(current.players, id.actor)) return denied;
-      ctx.assertOwnerCurrent!();
+      authority.assertCurrent();
       return describe(current, id.actor);
     }
     if (cmd.verb === "inventory" || cmd.verb === "recap") {
       if (!current || !Object.hasOwn(current.players, id.actor)) return denied;
-      if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
-      ctx.assertOwnerCurrent!();
+      if (await authority.destination() !== target) return denied;
+      authority.assertCurrent();
       if (cmd.verb === "inventory") return `Inventory: ${current.inventory[id.actor]?.join(", ") || "empty"}. Version ${current.version}.`;
       if (cmd.verb === "recap") return `Public journal: ${current.world.journal.slice(-8).join("; ") || "no discoveries"}. Ending: ${current.world.ending}. Version ${current.version}.`;
     }
@@ -235,20 +273,19 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
     if (prior) {
       if (prior.fingerprint !== fingerprint(cmd)) return "Request id already used for another action.";
       if (cmd.verb === "join" && cmd.gameId !== current?.id) return denied;
-      ctx.assertOwnerCurrent!();
+      authority.assertCurrent();
       return prior.text;
     }
     let next: Game;
     let text: string;
     if (cmd.verb === "create") {
       if (current) return "A game already exists in this conversation.";
-      const attributes = cmd.target === "tidehand" ? { grit: 2, wits: 1, charm: 0 } as const
-        : cmd.target === "lantern-singer" ? { grit: 0, wits: 1, charm: 2 } as const
-        : { grit: 1, wits: 2, charm: 0 } as const;
+      const attributes = archetypes[isArchetype(cmd.target) ? cmd.target : "quay-runner"].attributes;
       next = {
         saveSchemaVersion: 1,
         id: randomUUID(), agentId: id.agentId, sessionId: id.sessionId,
         sessionKey: id.sessionKey, destination: target, owner: id.actor,
+        ...(authority.starterSession ? { starterSession: authority.starterSession } : {}),
         approved: { [id.actor]: true }, players: { [id.actor]: "quay" }, attributes: { [id.actor]: attributes },
         resolve: { [id.actor]: 6 }, rests: { [id.actor]: { before: false, after: false } },
         inventory: { [id.actor]: [] }, world: initialWorld(), receipts: {}, version: 1,
@@ -258,8 +295,8 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       if (!current) return denied;
       if (current.world.ending !== "none") return "This game has a committed ending; start a new session for a new game.";
       if (cmd.verb === "approve") {
-        if (current.owner !== id.actor) return denied;
-        const approvedActor = JSON.stringify([id.channel, id.accountId, cmd.sender]);
+        if (current.owner !== id.actor || (cmd.gameId && cmd.gameId !== current.id)) return denied;
+        const approvedActor = authority.approvedActor?.(cmd.sender!) ?? JSON.stringify([id.channel, id.accountId, cmd.sender]);
         if (!Object.hasOwn(current.approved, approvedActor) && Object.keys(current.approved).length >= MAX_PLAYERS) return "Game is full.";
         next = { ...current, approved: { ...current.approved, [approvedActor]: true }, receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Approved sender for game ${next.id}.`;
@@ -325,7 +362,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         const stair = hazard === "tower-stair";
         if (pump) {
           if (current.players[id.actor] !== "pump") return "The Pump hatch is not here.";
-          if (current.world.flags.pumpOpen) return "The Pump hatch is already open.";
+          if (current.world.flags.pressureRelieved) return "The pressure at the Pump House has already been relieved.";
           if (current.world.flags.pumpBraced) return "The lever is already braced; open the hatch without a roll.";
         } else if (stair) {
           if (current.players[id.actor] !== "tower") return "The Tower service stair is not here.";
@@ -347,10 +384,11 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         let consequence: string;
         if (pump || stair) {
           const opening = stair ? complication ? "The Tower service stair opens loudly." : mixed ? "The Tower service stair opens." : "The Tower service stair opens silently."
+            : current.world.flags.pumpOpen ? complication ? "The release wheel jams open." : "The release wheel turns."
             : complication ? "The Pump hatch opens noisily and the wheel jams open."
             : mixed ? "The Pump hatch opens." : "The Pump hatch opens cleanly.";
           const cost = costsResolve ? " The effort costs 1 Resolve." : surgeCost ? " The surge rises." : "";
-          consequence = opening + cost;
+          consequence = opening + (pump ? " The trapped pressure drains." : "") + cost;
         } else {
           consequence = mixed ? leaveItem ? `The satchel is saved, but ${leaveItem} is left on the Archive shelf.` : "The satchel is saved, but the effort costs 1 Resolve."
             : !complication ? "The satchel is saved cleanly." : atCap
@@ -363,7 +401,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         next = { ...current, resolve: { ...current.resolve, [id.actor]: strain.resolve },
           players: strain.retreat ? { ...current.players, [id.actor]: retreatRoom as RoomId } : { ...current.players },
           inventory: leave ? { ...current.inventory, [id.actor]: current.inventory[id.actor].filter((item) => item !== leaveItem) } : current.inventory,
-          world: { ...current.world, surge, items: leave ? { ...current.world.items, [leaveItem as ItemId]: "archive" } : current.world.items, flags: { ...current.world.flags, [settled]: true },
+          world: { ...current.world, surge, items: leave ? { ...current.world.items, [leaveItem as ItemId]: "archive" } : current.world.items, flags: { ...current.world.flags, [settled]: true, ...(pump ? { pressureRelieved: true } : {}) },
             journal: [...current.world.journal, entry] },
           receipts: { ...current.receipts }, version: current.version + 1 };
         text = `Rolled ${result.dice.join("+")} + ${result.modifier} ${result.attribute} = ${result.total}: ${result.band}. ${consequence}${strain.retreat ? ` Retreat to ${retreatRoom === "quay" ? "Lantern Quay" : "the Crooked Compass"}; a breather can restore Resolve.` : ""} Version ${next.version}.`;
@@ -386,13 +424,14 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         if (!current.world.clues.stakesKnown) return "Learn the consequences from Mara, the survey plate, or the Archive plan before choosing an ending.";
         if (cmd.target !== "deferred" && at !== "tower") return "Operate the ending controls from Beacon Tower.";
         if (["balanced", "diverted"].includes(cmd.target!) && current.world.reflector === "none") return "Fit a reflector at Beacon Tower before lighting the beacon.";
+        if (cmd.target === "balanced" && !current.world.flags.pressureRelieved) return "The pressure gauge is still in the red. At the Pump House, hold the lever and turn the release wheel to make BALANCE safe. Suri can help.";
         if (cmd.target === "shuttered" && !current.world.flags.boatsWarned) return "Warn the boats before shutting the beacon.";
         if (cmd.target === "deferred" && !current.world.flags.evacuated) return "Organize warning and evacuation before deferring repairs.";
         // Mara can help fit an improvised reflector: neither the prism nor mirror is a required quest key.
         const dial = cmd.target === "balanced" ? "balanced" : cmd.target === "diverted" ? "diverted" : cmd.target === "shuttered" ? "shut" : "unset";
         const beacon = cmd.target === "balanced" || cmd.target === "diverted" ? "lit" : "dark";
         const consequence = cmd.target === "diverted"
-          ? current.world.flags.marketWarned ? "The Market was warned and its goods protected." : "One Market stall lost stock in the diverted water."
+          ? current.world.flags.marketWarned ? "The Market run floods, but the warning protected its goods." : "One Market stall lost stock in the diverted water."
           : cmd.target === "balanced" ? "Both shores are safe; a fitted or improvised reflector lights the beacon."
           : cmd.target === "shuttered" ? "The warned boats take shelter while the Market remains dry."
           : "Residents have been warned and evacuated; repairs wait until dawn.";
@@ -414,7 +453,7 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
       } else if (cmd.verb === "brace") {
         if (!Object.hasOwn(current.players, id.actor)) return denied;
         if (current.players[id.actor] !== "pump") return "The pump lever is not here.";
-        if (current.world.flags.pumpOpen) return "The Pump hatch is already open.";
+        if (current.world.flags.pressureRelieved) return "The pressure at the Pump House has already been relieved.";
         if (current.world.flags.pumpBraced) return "The pump lever is already braced.";
         const braceItem = cmd.target === "pump-lever:safety-line" ? "safety-line" : "weather-crate";
         if (current.world.items[braceItem] !== id.actor) return `Carry the ${braceItem} before bracing the lever.`;
@@ -436,15 +475,23 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
         const assisted = cmd.target === "pump-hatch:suri";
         const pump = assisted || cmd.target === "pump-hatch";
         if (at !== (pump ? "pump" : "tower") && (at !== "archive" || assisted)) return "That mechanism is not here.";
-        if (pump && current.world.flags.pumpOpen) return "The Pump hatch is already open.";
+        const release = pump && at === "pump";
+        if (pump && (release ? current.world.flags.pressureRelieved : current.world.flags.pumpOpen))
+          return release ? "The pressure at the Pump House has already been relieved." : "The Pump hatch is already open.";
         if (assisted && !current.world.flags.suriOfferedHelp) return "Talk to Suri at Tide Market before asking her to hold the lever.";
-        if (pump && at === "pump" && !assisted && !current.world.flags.pumpBraced)
-          return "The lever must be held or braced before the wheel can open the hatch. Ask Suri, use the weather crate, or choose a risky opening.";
-        const flags = { ...current.world.flags, [pump ? "pumpOpen" : "stairOpen"]: true };
-        const entry = assisted ? "Suri held the lever while the player opened the Pump hatch." : "A route to the Archive was opened.";
+        if (release && !assisted && !current.world.flags.pumpBraced)
+          return "The lever must be held or braced before the wheel can release the pressure. Ask Suri, use the weather crate, or risk a solo release.";
+        const flags = { ...current.world.flags, [pump ? "pumpOpen" : "stairOpen"]: true, ...(release ? { pressureRelieved: true } : {}) };
+        const routeOpened = !release || !current.world.flags.pumpOpen;
+        const entry = [
+          assisted ? "Suri held the lever." : "",
+          routeOpened ? "A route to the Archive was opened." : "",
+          release ? "The trapped pressure drained at the Pump House." : "",
+        ].filter(Boolean).join(" ");
         next = { ...current, world: { ...current.world, flags, journal: [...current.world.journal, entry] },
           receipts: { ...current.receipts }, version: current.version + 1 };
-        text = `${assisted ? "Suri holds the lever. " : ""}Opened ${pump ? "pump-hatch" : "tower-stair"}. Version ${next.version}.`;
+        const opening = release && current.world.flags.pumpOpen ? "" : `Opened ${pump ? "pump-hatch" : "tower-stair"}. `;
+        text = `${assisted ? "Suri holds the lever. " : ""}${opening}${release ? "The trapped pressure drains. " : ""}Version ${next.version}.`;
       }
     }
     // Prevent unbounded retained rows: reject before a receipt can be silently evicted.
@@ -452,14 +499,14 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
     next.receipts[rkey] ??= { fingerprint: fingerprint(cmd), text };
     if (Object.keys(next.receipts).length > MAX_RECEIPTS) return "Receipt capacity reached; game requires maintenance.";
     if (Buffer.byteLength(JSON.stringify(next), "utf8") > MAX_GAME_BYTES) return "Game capacity reached; game requires maintenance.";
-    ctx.assertOwnerCurrent!();
-    if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
-    ctx.assertOwnerCurrent!();
+    authority.assertCurrent();
+    if (await authority.destination() !== target) return denied;
+    authority.assertCurrent();
     const result = await store.compareAndApply(key, observed.comparison, { operation: "update", action: "set", value: next });
-    ctx.assertOwnerCurrent!();
+    authority.assertCurrent();
     if (result.status === "applied") {
-      if (destination(ctx, id, await ctx.getCurrentConversationBinding()) !== target) return denied;
-      ctx.assertOwnerCurrent!();
+      if (await authority.destination() !== target) return denied;
+      authority.assertCurrent();
       return text;
     }
     if (result.status !== "conflict") return denied;
@@ -467,7 +514,189 @@ export async function runCommand(ctx: PluginCommandContext, store: Store, die?: 
   return "Campaign Keeper: concurrent update; retry with the same request id.";
 }
 
+/** Optional host capability proposed by OpenClaw #189600; older hosts fail closed for WebChat. */
+type PlayerToolContext = OpenClawPluginToolContext<2> & {
+  requesterProfile?: { readonly id: string; assertCurrent: () => void };
+};
+
+function launchDestination(keeper: LaunchSession): string {
+  return JSON.stringify(["launcher", keeper.agentId, keeper.sessionKey, keeper.sessionId, keeper.lifecycleRevision ?? null]);
+}
+
+function launchIdentity(route: LaunchRoute): Identity {
+  return { ...route.keeper, channel: "launcher", accountId: "launcher",
+    actor: JSON.stringify(["human-profile", route.profileId]) };
+}
+
+const launchRequestId = "launcher-start";
+function launchedArchetype(game: Game): Archetype | undefined {
+  const saved = game.receipts[receiptKey(game.owner, launchRequestId)]?.fingerprint;
+  if (saved === fingerprint({ verb: "create" })) return "quay-runner";
+  return archetypeIds.find(target => saved === fingerprint({ verb: "create", target }));
+}
+
+export async function launchedScene(route: LaunchRoute, store: Store, selection?: Archetype) {
+  const id = launchIdentity(route);
+  const target = launchDestination(route.keeper);
+  if (selection) {
+    await runTransition(id, target, { verb: "create", requestId: launchRequestId, target: selection }, store, {
+      assertCurrent: route.assertCurrent, destination: async () => target, starterSession: route.player,
+    });
+  }
+  const game = await launchedSave(route.keeper, store, route.assertCurrent);
+  if (!game || game.owner !== id.actor || !sameLaunchSession(game.starterSession, route.player)) return null;
+  const archetype = launchedArchetype(game);
+  if (!archetype || (selection && selection !== archetype)) return null;
+  return { room: rooms[game.players[id.actor]].name, scene: viewRoom(game.world, game.players[id.actor], id.actor),
+    character: archetypes[archetype].name };
+}
+
+async function launchedSave(keeper: LaunchSession, store: Store, assertCurrent: () => void) {
+  if (!store.observe) return null;
+  const target = launchDestination(keeper);
+  const key = JSON.stringify([keeper.agentId, keeper.sessionId, target]);
+  assertCurrent();
+  const { value } = await store.observe(key);
+  assertCurrent();
+  return value && bound(value, keeper, target) && validGame(value, key) ? value : null;
+}
+
+export async function launchedManagement(keeper: LaunchSession, store: Store, assertCurrent: () => void) {
+  const game = await launchedSave(keeper, store, assertCurrent);
+  return game ? { version: game.version, players: Object.keys(game.players).length,
+    room: rooms[game.players[game.owner]].name } : null;
+}
+function directPlayerInput(ctx: PlayerToolContext): boolean {
+  const p = ctx.inputProvenance;
+  return !p || (p.kind === "external_user" && !p.sourceSessionKey && !p.sourceTool && !p.sourceRole);
+}
+function playerCurrentAssertion(ctx: PlayerToolContext): () => void {
+  // Agent traffic keeps agent identity even if a sponsoring profile is present.
+  const profile = directPlayerInput(ctx) && ctx.messageChannel === "webchat" ? ctx.requesterProfile : undefined;
+  return () => {
+    ctx.assertInvocationCurrent();
+    if (directPlayerInput(ctx) && ctx.messageChannel === "webchat") {
+      if (!profile?.id?.trim() || typeof profile.assertCurrent !== "function") throw Error("verified requester unavailable");
+      profile.assertCurrent();
+    }
+  };
+}
+
+/** Session tool adapter: actor is derived exclusively from host context, never model arguments. */
+export async function runPlayerIntent(ctx: PlayerToolContext, args: unknown, store: Store, launch?: LaunchRoute): Promise<string> {
+  if (!ctx.agentId?.trim() || !ctx.sessionKey?.trim() || !ctx.sessionId?.trim() || !ctx.assertInvocationCurrent ||
+      !store.observe || !store.compareAndApply || !args || typeof args !== "object" || Array.isArray(args)) return denied;
+  const input = args as Record<string, unknown>;
+  if (Object.keys(input).some(key => !["action", "requestId", "target", "gameId", "sourceSessionKey", "choice", "retreat", "item", "helper"].includes(key)) ||
+      typeof input.action !== "string" || typeof input.requestId !== "string" || !token.test(input.requestId)) return denied;
+  const provenance = ctx.inputProvenance;
+  let actor: string;
+  const isLauncherChat = ctx.sessionKey.startsWith(`agent:${ctx.agentId}:dashboard:ck-play-`);
+  const directHuman = directPlayerInput(ctx) && (ctx.senderIsOwner === true || isLauncherChat) &&
+    (ctx.messageChannel === "webchat"
+      ? Boolean(ctx.requesterProfile?.id?.trim() && typeof ctx.requesterProfile.assertCurrent === "function")
+      : Boolean(ctx.requesterSenderId?.trim()));
+  if (provenance?.kind === "inter_session" && provenance.sourceTool === "sessions_send" &&
+      provenance.sourceSessionKey?.trim() && /^agent:[^:]+:.+/.test(provenance.sourceSessionKey) &&
+      provenance.sourceSessionKey.length <= 256 && !/\s/.test(provenance.sourceSessionKey) && provenance.sourceSessionKey !== ctx.sessionKey) {
+    actor = JSON.stringify(["agent-session", provenance.sourceSessionKey]);
+  } else if (directHuman) {
+    if (!ctx.messageChannel?.trim()) return denied;
+    actor = ctx.messageChannel === "webchat"
+      ? JSON.stringify(["human-profile", ctx.requesterProfile!.id])
+      : JSON.stringify(["human", ctx.messageChannel, ctx.agentAccountId ?? "", ctx.requesterSenderId]);
+  } else return denied;
+  if (["create", "enroll"].includes(input.action) && !directHuman) return denied;
+  for (const key of ["choice", "retreat", "item", "helper"]) {
+    if (input[key] !== undefined && (typeof input[key] !== "string" || !token.test(input[key] as string))) return denied;
+  }
+  if (input.action !== "risk" && ["choice", "retreat", "item"].some(key => input[key] !== undefined)) return denied;
+  if (!["open", "brace"].includes(input.action) && input.helper !== undefined) return denied;
+  let cmd: Command | null;
+  if (input.action === "enroll") {
+    if (typeof input.sourceSessionKey !== "string" || !/^agent:[^:]+:.+/.test(input.sourceSessionKey) ||
+        input.sourceSessionKey.length > 256 || /\s/.test(input.sourceSessionKey) || input.sourceSessionKey === ctx.sessionKey ||
+        input.target !== undefined || typeof input.gameId !== "string" || !/^[0-9a-f-]{36}$/.test(input.gameId)) return denied;
+    cmd = { verb: "approve", sender: input.sourceSessionKey, gameId: input.gameId, requestId: input.requestId };
+  } else {
+    if (input.sourceSessionKey !== undefined || input.action === "approve") return denied;
+    const target = input.action === "join" ? input.gameId : input.target;
+    if (target !== undefined && (typeof target !== "string" || (input.action !== "move" && /\s/.test(target)))) return denied;
+    if (input.action === "join" && input.target !== undefined || input.action === "create" && input.gameId !== undefined ||
+        input.gameId !== undefined && (typeof input.gameId !== "string" || !/^[0-9a-f-]{36}$/.test(input.gameId))) return denied;
+    if (input.action === "risk") {
+      if (!input.choice || !input.retreat) return denied;
+      cmd = parse(["risk", target, input.choice, input.item, input.retreat, input.requestId].filter(v => v !== undefined).join(" "));
+    } else if (input.helper !== undefined) {
+      cmd = parse([input.action, target, input.helper, input.requestId].join(" "));
+    } else if (["look", "inventory", "recap"].includes(input.action)) {
+      if (target !== undefined) return denied;
+      cmd = parse(input.action);
+    } else {
+      const room = input.action === "move" && typeof target === "string"
+        ? Object.entries(rooms).find(([id, room]) => id === target || room.name === target)?.[0]
+        : target;
+      cmd = parse([input.action, room, input.requestId].filter(v => v !== undefined).join(" "));
+    }
+    if (!cmd) return denied;
+    if (input.gameId !== undefined) cmd.gameId = input.gameId as string;
+  }
+  if (isLauncherChat) {
+    if (!launch || !directHuman || ctx.messageChannel !== "webchat" || launch.profileId !== ctx.requesterProfile?.id ||
+        ctx.sessionKey !== launch.player.sessionKey || ctx.sessionId !== launch.player.sessionId ||
+        ["create", "approve", "join"].includes(cmd.verb)) return denied;
+    const target = launchDestination(launch.keeper);
+    const assertCurrent = playerCurrentAssertion(ctx);
+    return runTransition(launchIdentity(launch), target, cmd, store, {
+      assertCurrent: () => { assertCurrent(); launch.assertCurrent(); },
+      destination: async () => target, starterSession: launch.player,
+    });
+  }
+  const id: Identity = { agentId: ctx.agentId, sessionKey: ctx.sessionKey, sessionId: ctx.sessionId,
+    channel: "session-tool", accountId: "session-tool", actor };
+  const target = JSON.stringify(["session-tool", id.agentId, id.sessionKey, id.sessionId]);
+  const assertCurrent = playerCurrentAssertion(ctx);
+  assertCurrent();
+  return runTransition(id, target, cmd, store, {
+    assertCurrent,
+    destination: async () => target,
+    approvedActor: key => JSON.stringify(["agent-session", key]),
+  });
+}
+
+export function registerPlayerIntentTool(api: Pick<OpenClawPluginApi, "registerTool" | "runtime">,
+  resolveLaunch?: (ctx: PlayerToolContext) => Promise<LaunchRoute | undefined>): void {
+  api.registerTool({ contextVersion: 2, create(ctx) {
+    return {
+      name: "campaign_keeper_intent", label: "Campaign Keeper player intent",
+      description: "Translate the current player's natural-language request into a supported action, then narrate only its committed result. Identity comes from host context. Owner-only enroll approves an exact agent source session; the agent must join. No actor override. Unsupported proposals require clarification, not invented effects.",
+      parameters: { type: "object", additionalProperties: false, required: ["action", "requestId"],
+        properties: { action: { type: "string" }, requestId: { type: "string" }, target: { type: "string" },
+          gameId: { type: "string" }, sourceSessionKey: { type: "string" },
+          choice: { type: "string" }, retreat: { type: "string" }, item: { type: "string" }, helper: { type: "string" } } } as any,
+      async execute(_callId, args) {
+        try {
+          const launch = await resolveLaunch?.(ctx);
+          const assertPlayer = playerCurrentAssertion(ctx);
+          const store = openGameStore(api.runtime, () => { assertPlayer(); launch?.assertCurrent(); });
+          const text = await runPlayerIntent(ctx, args, store, launch);
+          return { content: [{ type: "text" as const, text }], ...(text === denied ? { details: { rejection: "adapter-validation", context: {
+            agent: Boolean(ctx.agentId), session: Boolean(ctx.sessionKey), incarnation: Boolean(ctx.sessionId),
+            owner: ctx.senderIsOwner === true, requester: Boolean(ctx.requesterSenderId), channel: ctx.messageChannel ?? null,
+            provenance: ctx.inputProvenance?.kind ?? null, sourceTool: ctx.inputProvenance?.sourceTool ?? null,
+          } } } : {}) };
+        } catch { return { content: [{ type: "text" as const, text: denied }], details: {
+          rejection: "authority-or-storage",
+        } }; }
+      },
+    };
+  } }, { name: "campaign_keeper_intent" });
+}
+
 const storeOptions = { namespace: "campaign-keeper-spike-v2", maxEntries: 64, overflowPolicy: "reject-new" } as const;
+export function openGameStore(runtime: OpenClawPluginApi["runtime"], assertCurrent: () => void): Store {
+  return runtime.state.openKeyedStoreV2<Game>(storeOptions, { assertCurrent });
+}
 
 /** This projection never includes binding, owner, sender IDs, positions or receipts. */
 export async function readGameStats(
@@ -516,7 +745,9 @@ export async function readGameStats(
     acceptedActions: asOfVersion, games, asOfVersion, status: "complete" };
 }
 
-export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | "runtime" | "session" | "pluginConfig">): void {
+export function registerEngine(api: Pick<OpenClawPluginApi, "registerCommand" | "runtime" | "session" | "pluginConfig"> & Partial<Pick<OpenClawPluginApi, "registerTool">>,
+  resolveLaunch?: (ctx: PlayerToolContext) => Promise<LaunchRoute | undefined>): void {
+  if (api.registerTool) registerPlayerIntentTool(api as Pick<OpenClawPluginApi, "registerTool" | "runtime">, resolveLaunch);
   // Explicit opt-in and an exact configured agent; the descriptor and action share this gate.
   if (api.pluginConfig?.dashboardEnabled === true && typeof api.pluginConfig.agentId === "string" && api.pluginConfig.agentId.trim()) {
     const agentId = api.pluginConfig.agentId;

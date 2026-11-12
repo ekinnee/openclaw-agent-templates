@@ -139,13 +139,14 @@ test("Suri offers help in the Market and opens the hatch with the player at the 
   assert.equal(after.world.flags.pumpBraced, false);
   assert.equal(after.world.surge, before.world.surge);
   assert.deepEqual(after.resolve, before.resolve);
-  assert.deepEqual(after.world.journal.slice(before.world.journal.length), ["Suri held the lever while the player opened the Pump hatch."]);
+  assert.deepEqual(after.world.journal.slice(before.world.journal.length), ["Suri held the lever. A route to the Archive was opened. The trapped pressure drained at the Pump House."]);
+  assert.equal(after.world.flags.pressureRelieved, true);
   const receipt = after.receipts[JSON.stringify([after.owner, "help"])];
   assert.equal(receipt.text, opened);
   assert.equal(receipt.roll, undefined);
   assert.match(await f.run("open pump-hatch help"), /already used/);
-  assert.match(await f.run("open pump-hatch again"), /already open/);
-  assert.match(await f.run("risk pump-hatch surge quay again", undefined, noRoll), /already open/);
+  assert.match(await f.run("open pump-hatch again"), /already been relieved/);
+  assert.match(await f.run("risk pump-hatch surge quay again", undefined, noRoll), /already been relieved/);
   assert.match(await f.run("move archive enter"), /Flooded Archive/);
   assert.equal(await f.run("open pump-hatch suri help", undefined, noRoll), opened);
   assert.match(await f.run("move pump back-through-hatch"), /Pump House/);
@@ -183,6 +184,7 @@ for (const scenario of [
     const after = [...f.rows.values()][0];
     assert.equal(after.version, before.version + 1);
     assert.equal(after.world.flags.pumpOpen, true);
+    assert.equal(after.world.flags.pressureRelieved, true);
     assert.equal(after.world.flags.pumpBraced, false);
     assert.equal(after.world.surge, scenario.surge);
     assert.equal(after.resolve[after.owner], scenario.resolve);
@@ -247,11 +249,11 @@ test("a conflicting hatch opening leaves exactly one journal effect and receipt"
   assert.equal(after.world.flags.pumpOpen, true);
   if (Object.hasOwn(after.receipts, JSON.stringify([after.owner, "rush"]))) {
     assert.match(rushed, /jams open/);
-    assert.match(assisted, /already open/);
+    assert.match(assisted, /already been relieved/);
     assert.equal(after.world.surge, 1);
   } else {
     assert.match(assisted, /Suri holds/);
-    assert.match(rushed, /already open/);
+    assert.match(rushed, /already been relieved/);
     assert.equal(after.world.surge, 0);
   }
 });
@@ -363,6 +365,15 @@ test("ending is an explicit committed choice, cannot be rewritten, and updates a
   assert.match(await f.run("move tower travel"), /Beacon Tower/);
   assert.match(await f.run("finish balanced no-reflector"), /Fit a reflector/);
   assert.match(await f.run("fit improvised lens"), /Fitted improvised/);
+  assert.match(await f.run("finish balanced pressure"), /pressure gauge is still in the red/);
+  await f.run("move quay back-to-quay");
+  await f.run("move market find-suri");
+  assert.match(await f.run("talk suri ask-suri"), /holding the lever/);
+  await f.run("move pump reach-pump");
+  assert.match(await f.run("open pump-hatch suri relieve"), /pressure drains/);
+  await f.run("move market leave-pump");
+  await f.run("move quay return-to-quay");
+  await f.run("move tower return-to-tower");
   const ending = await f.run("finish balanced final");
   assert.match(ending, /Committed balanced ending/);
   assert.equal(await f.run("finish balanced final"), ending);
@@ -373,6 +384,38 @@ test("ending is an explicit committed choice, cannot be rewritten, and updates a
   assert.equal(saved.world.journal.filter((event: string) => event.includes("chose the balanced ending")).length, 1);
   assert.equal(saved.world.dial, "balanced");
   assert.equal(saved.world.beacon, "lit");
+  assert.match(await f.run("look"), /beacon shines.*dial rests at BALANCE.*reflector is fitted/);
+  assert.match(viewRoom(saved.world, "quay", saved.owner), /beacon shines/);
+  assert.match(examine(saved.world, "tower", "dial")!, /beacon shines/);
+  const olderEnding = structuredClone(saved.world);
+  delete olderEnding.flags.pressureRelieved;
+  assert.doesNotMatch(viewRoom(olderEnding, "tower", saved.owner), /trembles in the red/);
+});
+
+test("the Tower prism and Archive-side hatch leave the pressure work for the Pump controls", async () => {
+  const f = fixture();
+  await f.run("create start");
+  await f.run("move tower travel");
+  await f.run("talk mara stakes");
+  await f.run("open tower-stair stair");
+  await f.run("move archive descend");
+  await f.run("take glass-prism prism");
+  assert.match(await f.run("open pump-hatch archive-latch"), /Opened pump-hatch/);
+  await f.run("move tower return");
+  await f.run("fit glass-prism lens");
+  const before = structuredClone([...f.rows.values()][0]);
+  assert.equal(before.world.flags.pumpOpen, true);
+  assert.match(await f.run("finish balanced premature"), /hold the lever and turn the release wheel/);
+  assert.deepEqual([...f.rows.values()][0], before);
+
+  await f.run("move archive descend-again");
+  await f.run("move pump reach-controls");
+  assert.match(await f.run("open pump-hatch unbraced"), /must be held or braced/);
+  assert.match(await f.run("risk pump-hatch resolve quay vent", undefined, () => 6), /release wheel turns.*pressure drains/);
+  assert.match(await f.run("look"), /pressure gauge has settled/);
+  await f.run("move archive return-through-hatch");
+  await f.run("move tower return-to-tower");
+  assert.match(await f.run("finish balanced final"), /Committed balanced ending/);
 });
 
 test("deferred and shuttered endings require prior warning, while diversion commits its stated cost", async () => {
@@ -447,13 +490,13 @@ test("NPCs and clue routes require room presence and persist facts before finale
   assert.match(await f.run("talk suri wrong"), /not here/);
   await f.run("move tavern go1");
   const pell = await f.run("talk pell talk1");
-  assert.match(pell, /balance the harbor pressure/);
+  assert.match(pell, /vent the trapped pressure at the Pump House/);
   assert.equal(await f.run("talk pell talk1"), pell);
   let saved = [...f.rows.values()][0];
   assert.equal(saved.world.clues.plateRead, true);
   assert.equal(saved.world.clues.balanceKnown, true);
   await f.run("move market go2");
-  assert.match(await f.run("examine gauge-slate clue2"), /middle setting/);
+  assert.match(await f.run("examine gauge-slate clue2"), /middle BALANCE setting/);
   assert.match(await f.run("talk suri talk2"), /middle BALANCE/);
   assert.match(await f.run("take weather-crate crate1"), /Collected weather-crate/);
   saved = [...f.rows.values()][0];

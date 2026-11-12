@@ -1,8 +1,8 @@
 # Campaign Keeper engine capability spike
 
-Unpublished OpenClaw 2026.11.2 public-SDK prototype; **not safe for live players, multiplayer, or a playable installation**. It implements a bounded six-room authored map slice, but not a complete adventure or combat engine. Do not install, enable, or advertise this package as a game engine.
+Unpublished Campaign Keeper engine prototype. The solo natural-language game was tested on an isolated OpenClaw source build with verified requester identity. The [release handoff](../../docs/campaign-keeper-playable-add-gate.md) records the required host capability and remaining portable Add gates.
 
-The `/ck` command requires host authorization and an owner-capable `operator.write` command scope, `senderIsOwner`, and the host's `assertOwnerCurrent` callback. Ordinary non-owner senders fail closed even if the owner approved their sender ID: the public command SDK only provides an after-await current-authority callback for an admitted owner, not for an ordinary authorized sender. A prior `isAuthorizedSender` boolean and UUID possession are not sufficient to revalidate a non-owner before a state mutation. The SDK's later check for model continuation does not guard this command's state writes. Until the SDK exposes a suitable non-owner revalidation path (including an effect guard), there is no safe multiplayer claim. Owner approval is recorded atomically with the game, but cannot enable another player with this SDK.
+The `/ck` command requires host authorization and an owner-capable `operator.write` command scope, `senderIsOwner`, and the host's `assertOwnerCurrent` callback. A narrow WebChat-owner route additionally requires `operator.admin` and keys the game to the host agent/session key and incarnation; WebChat has no channel-plugin binding adapter. Other channels retain the exact plugin-binding checks below. Ordinary non-owner senders fail closed even if the owner approved their sender ID: the public command SDK only provides an after-await current-authority callback for an admitted owner, not for an ordinary authorized sender. A prior `isAuthorizedSender` boolean and UUID possession are not sufficient to revalidate a non-owner before a state mutation. The SDK's later check for model continuation does not guard this command's state writes. Until the SDK exposes a suitable non-owner revalidation path (including an effect guard), there is no safe multiplayer claim. Owner approval is recorded atomically with the game, but cannot enable another player with this SDK. The WebChat route has fixture tests, **not** an authenticated installed Gateway turn.
 
 ### Commands
 
@@ -12,7 +12,7 @@ The `/ck` command requires host authorization and an owner-capable `operator.wri
 - For checks and recovery, use `roll <grit|wits|charm> <request-id>`, `risk archive-shelf <grit|wits> [nonessential-carried-item] <quay|tavern> <request-id>`, `rest <request-id>`.
 - For the finale, use `fit <glass-prism|hand-mirror|improvised> <request-id>`, `warn <boats|market|evacuate> <request-id>`, `finish <balanced|diverted|shuttered|deferred> <request-id>`.
 
-At the Pump House, brace the lever with the weather crate carried from Tide Market, then use `open pump-hatch`. For Suri's help, first commit `talk suri` at Tide Market, then use `open pump-hatch suri` at the Pump House. Both routes open without dice. In an earlier save, use a fresh `talk suri` request in the Market to record her offer. From the Archive, the hatch can be opened directly. An open hatch stays traversable from both sides.
+At the Pump House, brace the lever with the weather crate carried from Tide Market, then use `open pump-hatch`. For Suri's help, first commit `talk suri` at Tide Market, then use `open pump-hatch suri` at the Pump House. Both routes open the hatch and relieve pressure without dice. In an earlier save, use a fresh `talk suri` request in the Market to record her offer. From the Archive, the hatch can be opened directly for passage. The Pump-side controls can relieve pressure through an already-open hatch.
 
 To rush an unbraced hatch at the Pump House, state the stakes and have the player choose the mixed-band cost and retreat room before submitting `risk pump-hatch`. The engine rolls 2d6 + Grit.
 
@@ -22,11 +22,11 @@ To rush an unbraced hatch at the Pump House, state the stakes and have the playe
 | 7–9 | Opens and costs the selected 1 Resolve or +1 surge. |
 | 6 or less | Opens noisily and the wheel jams open. Surge rises by 1. |
 
-At surge 2, a surge cost becomes 1 Resolve. At zero Resolve, the open hatch and consequence commit with retreat to the selected room. `rest` restores 2 Resolve after retreat. The hatch, consequences, public journal entry, actual dice and request receipt save together. Resubmit the same command and request ID after an uncertain response to recover its receipt. An already-open hatch has no new opening cost. The weather crate is the supported brace; improvised bracing and a two-character lever handoff remain authored scenarios.
+At surge 2, a surge cost becomes 1 Resolve. At zero Resolve, the open hatch and consequence commit with retreat to the selected room. `rest` restores 2 Resolve after retreat. The hatch, consequences, public journal entry, actual dice and request receipt save together. Resubmit the same command and request ID after an uncertain response to recover its receipt. A completed pressure release refuses another release. The weather crate and carried safety line are supported braces.
 
 For the optional Archive shelf, disclose its fixed stakes before requesting the command. On 7–9, omit the item to spend 1 Resolve, or name a carried nonessential item to leave it on the shelf; it remains recoverable in the Archive. The safety line is excluded from this option. On 6 or less, water takes the satchel, reveals a maintenance route and raises surge; at surge 2 supplies are soaked. The engine commits its roll, effect, journal and receipt together. Tavern rest is tracked once before and once after full stakes discovery. The zero-Resolve breather remains available independently.
 
-A `finish` action requires committed stakes from Mara, the Tavern plate, or the Archive plan. Balanced and diverted require a fitted prism, mirror or informed improvised reflector. Shuttered requires a boats warning and deferred requires an evacuation. Diversion costs Market stock unless the Market was warned first. The chosen ending, dial, beacon and consequence commit together and update the game counts. Deferred is a deliberate command.
+A `finish` action requires committed stakes from Mara, the Tavern plate, or the Archive plan. Balanced and diverted require a fitted prism, mirror or informed improvised reflector. Balanced also requires the Pump-side pressure release. Shuttered requires a boats warning and deferred requires an evacuation. Diversion floods the Market run. A prior warning protects its goods. The chosen ending, dial, beacon and consequence commit together and update the game counts. Deferred is a deliberate command.
 
 Only the owner can `approve` a host-scoped sender ID. `join` requires a matching game UUID and prior approval. The current SDK admission gate limits executable actions to the owner. Request IDs identify replay receipts within an actor's actions.
 
@@ -42,3 +42,69 @@ Focused fake-store tests (not a host runtime or two-identity integration test) f
 `node --import /home/openclaw/openclaw/node_modules/tsx/dist/loader.mjs --test packages/engine/engine.test.ts`.
 
 The local six-room slice has legal movement, two explicit Archive route openings, room-scoped examination with saved public observations, a limited player-facing text projection, inventory, a public journal, unique item claims and CAS receipts. The prototype also records default archetype attributes and Resolve plus an isolated `roll <attribute> <request-id>` result with engine-generated 2d6 in the receipt; this raw roll **does not** apply encounter consequences or determine a hit/damage outcome. The hidden safety line requires examining the cleat before it can be taken. The fake-CAS item race uses two concurrent requests from **one owner**, not two authenticated players. Three room-checked NPC conversation adapters and Tavern/Market/Archive clue facts are persisted with receipts. The game-creator-only `/ck scene` command reads a bounded committed player projection and hands it to the GM agent through `continueAgent`; it is not an independently observed model turn and does not grant the GM state mutation. Its prompt cannot erase prior chat context or privately held GM source; spoiler-safe **model narration** needs a real agent-level adversarial test, not just this projection assertion. Deterministic look/move/item commands still bypass the model. NPC command text remains deterministic, not open-ended GM dialogue; it does not yet enforce every route through the full cooperative obstacle, free-form character creation, dice-driven NPC/encounter consequences, all clue discovery semantics, complete ending consequences, scene board, or GM tools. An owner can brace the Pump lever with a carried Market weather crate or explicitly use the carried, previously discovered safety line as an improvised alternative. The GM must map a player's proposal to this validated command; other arbitrary objects cannot acquire state effects through narration. The Tower stair opens deterministically, and an optional solo Grit risk opens it on every roll band with the selected 7–9 cost and capped-surge fallback. Two-character leverage coordination is still absent. A unique-item race test uses a fake CAS store, not a live two-player adapter. Missing: real channel identity and destination proof, safe non-owner authorization after awaits, binding-current effect guard, Gateway-restart replay, installed GM/model test, full game mechanics, migration, enrollment UX and immutable released plugin dependency.
+
+
+## Session-based GM tool adapter
+
+`campaign_keeper_intent` is a V2 tool for the separate GM agent. Players speak naturally;
+the GM translates the **current attributed player's request** to `{action, requestId,
+target?, gameId?, sourceSessionKey?, choice?, retreat?, item?, helper?}`, then narrates the committed result. `/ck` remains
+an optional deterministic debug shortcut, not a required gameplay interface. Unsupported
+proposals require clarification/refusal rather than invented state changes.
+
+The session-tool route uses its own destination discriminator and never requires a plugin
+conversation binding. It does not import or migrate command-route saves. The same transition
+core serves both adapters without manufacturing a `PluginCommandContext`.
+
+A direct owner human turn (absent provenance or unambiguous `external_user` provenance, `senderIsOwner === true`, host
+`requesterProfile: {id, assertCurrent}` for WebChat; trusted transport `requesterSenderId`
+and `messageChannel` for other channels) can create a game and explicitly enroll an exact
+agent source session with `{action:"enroll", sourceSessionKey:"agent:main:player", requestId}`.
+The enrolled source sends a `sessions_send` followup to the GM, then joins with the game UUID.
+The GM tool derives its agent player from host `inputProvenance` (`kind: inter_session`,
+`sourceTool: sessions_send`, `sourceSessionKey`), even when the sponsoring human owner facts
+are also present. It cannot select another actor through arguments. Other, incomplete, or
+ambiguous provenance rejects; enrollment alone does not create a character until join.
+All actions check membership; only the game creator may enroll. Human and agent use separate
+actor/replay keys. Scope is one GM session incarnation; resets do not import previous games.
+
+Supported actions reuse the authored engine verbs: create, enroll, join, look, inventory,
+recap, move, take, examine, talk, open, brace, fit, roll, risk, rest, finish, warn.
+`target` contains a single existing authored target token. Risk uses separate `choice` and
+`retreat` fields, with optional `item` for the Archive shelf (for example
+`{action:"risk", target:"archive-shelf", choice:"wits", retreat:"quay", requestId:"risk-1"}`).
+Pump/Tower choices are `resolve` or `surge`; Archive choices are `grit` or `wits`.
+`helper:"safety-line"` supports `brace` on `pump-lever`; `helper:"suri"` supports
+`open` on `pump-hatch`. Every field is validated through the authored command parser;
+fields on unrelated actions and whitespace injection reject. These fields choose authored
+consequences, never player identity. `requestId` is required, including reads; mutation
+replays return the original receipt. V2 `assertInvocationCurrent` is passed to
+`openKeyedStoreV2` for final state admission, not merely checked before awaited work.
+
+The command adapter retains its owner gates. See the [playtest ledger](../../docs/campaign-keeper-proof.md) for signed-in solo play and the bounded agent-player experiment. Agent enrollment still needs source incarnation and visible delivery proof before a multiplayer release.
+
+
+### Verified Control UI requester capability requirement
+
+The WebChat tool route now requires a host implementing OpenClaw #189600's proposed
+optional `requesterProfile: { id: string, assertCurrent(): void }` capability. The
+2026.11.2 host used in the earlier live test did not supply this fact; its owner bit
+alone is deliberately insufficient. This is a capability requirement, not a claim
+that #189600 is merged or available in a released version. The adapter uses a narrow
+structural extension so older SDKs compile, but older hosts fail closed at runtime.
+
+Direct WebChat actors are keyed by the exact verified profile ID, not display name,
+`gateway-owner`, generic SenderId, or owner status. The profile assertion is composed
+with invocation currency around awaited transitions, receipt replay and the actual
+V2 storage admission. Other channels retain their host-supplied transport sender keys.
+Inter-session player attribution remains source-session based even with a sponsoring
+profile present. Owner-only enrollment and membership checks are unchanged. Existing
+experimental human transport-key saves are not automatically reassigned to a profile.
+Storage/authority exception text is not returned in tool results; only a bounded
+rejection category and non-identity context-presence diagnostics remain.
+
+The profile consumer passed 65 engine/world/rules/browser fixture tests, including
+missing/malformed profile, non-owner, replay, profile revocation after a read and at
+final write, distinct agent attribution, and private exception suppression. These are
+fixtures against the proposed capability shape, not host PR integration or live proof.
+No host update, isolated deployment, restart, or production change accompanied this edit.
