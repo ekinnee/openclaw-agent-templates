@@ -1,0 +1,9 @@
+{
+  "name": "campaign-keeper-template",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "openclaw": {
+    "template": "CLAW.md"
+  }
+}

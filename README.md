@@ -7,6 +7,7 @@ A collection of independently installable OpenClaw Agent Templates. Each Templat
 | Template | Purpose |
 | --- | --- |
 | [Language Conversation Partner](templates/language-conversation-partner/) | Text-first conversation, role-play, focused exercises, and learner-controlled feedback; optional planning without a second agent. |
+| [Campaign Keeper](templates/campaign-keeper/) | Persistent, text-first cooperative adventure with a bounded engine plugin. Development in progress; the template requires an exact released engine dependency before portable Add. |
 
 ## Using a Template
 

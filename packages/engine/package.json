@@ -1,0 +1,30 @@
+{
+  "name": "campaign-keeper-engine-spike",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "controlUi": "./browser/index.ts",
+    "compat": {
+      "pluginApi": ">=2026.11.2",
+      "minGatewayVersion": "2026.11.2"
+    },
+    "build": {
+      "openclawVersion": "2026.11.2",
+      "pluginSdkVersion": "2026.11.2"
+    }
+  },
+  "scripts": {
+    "test": "node --import tsx --test ./engine.test.ts ./world.test.ts ./rules.test.ts ./browser/index.test.ts"
+  },
+  "peerDependencies": {
+    "openclaw": "2026.11.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "esbuild": "^0.28.2"
+  }
+}

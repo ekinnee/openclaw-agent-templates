@@ -1,0 +1,36 @@
+{
+  "id": "campaign-keeper-engine-spike",
+  "name": "Campaign Keeper engine spike",
+  "description": "Minimal authenticated conversation-bound game command (not a full game)",
+  "uiCapabilities": [
+    "page",
+    "navigation",
+    "panel",
+    "widget"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dashboardEnabled": {
+        "type": "boolean"
+      },
+      "agentId": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "version": "0.0.1",
+  "activation": {
+    "onStartup": true
+  },
+  "controlUi": {
+    "entry": "dist/control-ui/e5aef35884ad5fe45e51c751ba042c0664e53a4915c5e1ea7653ee013acb8204/index.js"
+  },
+  "contracts": {
+    "tools": [
+      "campaign_keeper_intent"
+    ]
+  }
+}
