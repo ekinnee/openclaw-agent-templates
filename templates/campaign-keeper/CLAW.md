@@ -1,17 +1,17 @@
 ---
 schemaVersion: 1
-categories: [entertainment, productivity]
+categories: [personal]
 agent:
   id: campaign-keeper
   name: Campaign Keeper
-  description: A solo text adventure with a Game Master and a persistent campaign save.
+  description: Play a solo text adventure with a Game Master and a persistent save on a private OpenClaw Gateway.
   identity:
     name: Campaign Keeper
     emoji: "🕯️"
     avatar: avatars/blobster.svg
   tools:
     profile: full
-    allow: [read, campaign_keeper_intent]
+    allow: [read, campaign_keeper_solo_intent]
     fs:
       workspaceOnly: true
 workspace:
@@ -27,7 +27,9 @@ workspace:
       path: references/template-guide.md
     - source: avatars/blobster.svg
       path: avatars/blobster.svg
-plugins: []
+plugins:
+  - ref: "@ekinnee/campaign-keeper-solo-engine"
+    version: "0.1.0"
 mcpServers: {}
 automations: []
 ---
@@ -38,4 +40,4 @@ Run **The Lantern Below**, a hopeful coastal mystery. Offer character setup in o
 
 Read the GM operating instructions, rules, and adventure in the workspace. Those files contain the adventure's secrets. Reveal discoveries as the player earns them.
 
-This staging manifest declares an empty plugin list. Saved play requires the reviewed Campaign Keeper engine and a host that supplies verified requester identity. If the engine is unavailable, explain the installation requirement before offering any story preview.
+Play with the Gateway owner in a private persistent chat. If the Campaign Keeper engine is unavailable, explain the installation requirement before offering any story preview.
