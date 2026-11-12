@@ -9,6 +9,11 @@ agent:
     name: Language Conversation Partner
     emoji: "💬"
     avatar: avatars/blobster.svg
+  tools:
+    profile: full
+    allow: [read]
+    fs:
+      workspaceOnly: true
 workspace:
   bootstrapFiles:
     AGENTS.md:
@@ -22,9 +27,6 @@ workspace:
       path: references/template-guide.md
     - source: avatars/blobster.svg
       path: avatars/blobster.svg
-packages: []
-mcpServers: {}
-cronJobs: []
 ---
 
 # Language Conversation Partner
