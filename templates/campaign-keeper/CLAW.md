@@ -8,7 +8,7 @@ agent:
   identity:
     name: Campaign Keeper
     emoji: "🕯️"
-    avatar: avatars/blobster.svg
+    avatar: avatars/blobster-keeper.png
   tools:
     profile: full
     allow: [read, campaign_keeper_solo_intent]
@@ -25,8 +25,8 @@ workspace:
       path: adventures/the-lantern-below/GM.md
     - source: README.md
       path: references/template-guide.md
-    - source: avatars/blobster.svg
-      path: avatars/blobster.svg
+    - source: avatars/blobster-keeper.png
+      path: avatars/blobster-keeper.png
 plugins:
   - ref: "@ekinnee/campaign-keeper-solo-engine"
     version: "0.1.0"
