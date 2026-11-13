@@ -6,9 +6,19 @@ and no skill, plugin, MCP, or scheduled-job dependencies.
 
 ## Add locally
 
-Use an OpenClaw version supporting CLAW.md Templates. Enable **Templates** under
-**Settings → Labs**, or set gateway.controlUi.experimental.templates to true
-on a headless installation. From the source project directory:
+The Focus Week package requires an OpenClaw build containing the
+[single-file Template manifest change](https://github.com/openclaw/openclaw/pull/196322).
+OpenClaw 2026.11.3 and 2026.11.5-beta.2 predate that change. Enable **Templates**
+under **Settings → Labs**, or set `gateway.controlUi.experimental.templates`
+to true on a headless installation.
+
+Add the published Template with:
+
+```bash
+openclaw templates add @ekinnee/language-conversation-partner
+```
+
+To install from the source project directory:
 
 ```bash
 openclaw templates validate .
@@ -60,17 +70,17 @@ Learning Plan Coordinator and permit this agent to discover and delegate to it.
 Only then, and after the learner approves the specific evidence to share, can
 the partner ask it for a checkpoint plan or revision and bring the proposal back
 into the same conversation. Installation alone does not connect the agents.
-The portable Template cannot configure named delegates, and its default
-OpenClaw profile grants only workspace-scoped reading. Enabling delegation is
+The portable Template cannot configure named delegates, and its
+OpenClaw tool policy grants only workspace-scoped reading. Enabling delegation is
 an explicit host-policy choice; this package does not grant or require it.
 
 ## Capabilities and limits
 
-The OpenClaw profile uses profile: full with the bounded allowlist [read];
-**full is the profile name, not a grant of all tools**. Reads are workspace-scoped
-and intended for the packaged references. Host policy may further restrict them.
+The manifest uses `agent.tools.profile: full` with the explicit allowlist
+`[read]`. Reads are workspace-scoped and intended for the packaged references.
+Host policy may further restrict them.
 There are no write, shell, browser, messaging, or automation grants. Other
-harnesses may ignore the OpenClaw profile and must enforce their own policies.
+harnesses must enforce their own tool policies.
 
 This template does not record pronunciation, score audio, certify CEFR levels,
 award credentials, or promise native-level accuracy across languages. Language
@@ -87,12 +97,10 @@ personal information just to make a role-play realistic.
 ```bash
 openclaw templates validate .
 openclaw templates dev . --json
-openclaw templates build . --out ../language-conversation-partner-0.1.0.tgz
+openclaw templates build . --out ../language-conversation-partner-0.1.1.tgz
 ```
 
-Review the exact built archive before publication. The unscoped package name is
-a local working identity; choose and verify an owned registry namespace before
-publishing. A GitHub PR does not publish the template to ClawHub.
+Review the exact built archive before publishing it to ClawHub under `ekinnee`.
 
 Source acceptance scenarios are in tests/acceptance.md and intentionally are
 not imported into the new agent's workspace or built publication artifact.
