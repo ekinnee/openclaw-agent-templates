@@ -18,6 +18,7 @@
     }
   },
   "scripts": {
+    "build:private-solo": "node ./build-private-solo.mjs",
     "test": "node --import tsx --test ./engine.test.ts ./world.test.ts ./rules.test.ts ./browser/index.test.ts"
   },
   "peerDependencies": {

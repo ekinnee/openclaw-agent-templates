@@ -1,4 +1,5 @@
 // Narrow deterministic command owner. No model, filesystem writes, or player-facing GM material.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import type { PluginCommandContext, OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
@@ -9,6 +10,7 @@ import { applyResolve, roll, validAttributes, type Attribute, type Attributes, t
 import { archetypes, archetypeIds, isArchetype, type Archetype } from "./characters.js";
 
 import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/tool-plugin";
+import { isIncognitoSessionKey } from "openclaw/plugin-sdk/session-key-runtime";
 
 export type Store = PluginStateKeyedStore<Game, 2>;
 export type LaunchSession = { agentId: string; sessionKey: string; sessionId: string; lifecycleRevision?: string };
@@ -582,8 +584,25 @@ function playerCurrentAssertion(ctx: PlayerToolContext): () => void {
   };
 }
 
+type PrivateSolo = { agentId?: string; toolName?: string; assertOperatorCurrent: () => void };
+
+function privateSoloAssertion(ctx: PlayerToolContext, solo: PrivateSolo): () => void {
+  const inInvocation = AsyncLocalStorage.snapshot();
+  return () => inInvocation(() => {
+    if (!ctx.agentId || (solo.agentId && ctx.agentId !== solo.agentId) || !ctx.sessionId?.trim() ||
+        !ctx.sessionKey?.startsWith(`agent:${ctx.agentId}:`) || isIncognitoSessionKey(ctx.sessionKey) ||
+        (!solo.agentId && !ctx.runId?.trim()) || ("backgroundRun" in ctx && ctx.backgroundRun) ||
+        ctx.messageChannel !== "webchat" || ctx.senderIsOwner !== true || !directPlayerInput(ctx)) {
+      throw Error("Private solo chat is unavailable");
+    }
+    ctx.assertInvocationCurrent();
+    solo.assertOperatorCurrent();
+  });
+}
+
 /** Session tool adapter: actor is derived exclusively from host context, never model arguments. */
-export async function runPlayerIntent(ctx: PlayerToolContext, args: unknown, store: Store, launch?: LaunchRoute): Promise<string> {
+export async function runPlayerIntent(ctx: PlayerToolContext, args: unknown, store: Store, launch?: LaunchRoute,
+  assertSoloCurrent?: () => void): Promise<string> {
   if (!ctx.agentId?.trim() || !ctx.sessionKey?.trim() || !ctx.sessionId?.trim() || !ctx.assertInvocationCurrent ||
       !store.observe || !store.compareAndApply || !args || typeof args !== "object" || Array.isArray(args)) return denied;
   const input = args as Record<string, unknown>;
@@ -591,12 +610,17 @@ export async function runPlayerIntent(ctx: PlayerToolContext, args: unknown, sto
       typeof input.action !== "string" || typeof input.requestId !== "string" || !token.test(input.requestId)) return denied;
   const provenance = ctx.inputProvenance;
   let actor: string;
-  const isLauncherChat = ctx.sessionKey.startsWith(`agent:${ctx.agentId}:dashboard:ck-play-`);
-  const directHuman = directPlayerInput(ctx) && (ctx.senderIsOwner === true || isLauncherChat) &&
+  const isLauncherChat = !assertSoloCurrent && ctx.sessionKey.startsWith(`agent:${ctx.agentId}:dashboard:ck-play-`);
+  const directHuman = Boolean(assertSoloCurrent) || (directPlayerInput(ctx) && (ctx.senderIsOwner === true || isLauncherChat) &&
     (ctx.messageChannel === "webchat"
       ? Boolean(ctx.requesterProfile?.id?.trim() && typeof ctx.requesterProfile.assertCurrent === "function")
-      : Boolean(ctx.requesterSenderId?.trim()));
-  if (provenance?.kind === "inter_session" && provenance.sourceTool === "sessions_send" &&
+      : Boolean(ctx.requesterSenderId?.trim())));
+  if (assertSoloCurrent) {
+    if (input.gameId !== undefined || input.sourceSessionKey !== undefined ||
+        ["approve", "enroll", "join"].includes(input.action)) return denied;
+    if (input.action === "create" && !isArchetype(input.target)) return denied;
+    actor = "solo-player";
+  } else if (provenance?.kind === "inter_session" && provenance.sourceTool === "sessions_send" &&
       provenance.sourceSessionKey?.trim() && /^agent:[^:]+:.+/.test(provenance.sourceSessionKey) &&
       provenance.sourceSessionKey.length <= 256 && !/\s/.test(provenance.sourceSessionKey) && provenance.sourceSessionKey !== ctx.sessionKey) {
     actor = JSON.stringify(["agent-session", provenance.sourceSessionKey]);
@@ -652,10 +676,11 @@ export async function runPlayerIntent(ctx: PlayerToolContext, args: unknown, sto
       destination: async () => target, starterSession: launch.player,
     });
   }
+  const channel = assertSoloCurrent ? "private-solo-chat" : "session-tool";
   const id: Identity = { agentId: ctx.agentId, sessionKey: ctx.sessionKey, sessionId: ctx.sessionId,
-    channel: "session-tool", accountId: "session-tool", actor };
-  const target = JSON.stringify(["session-tool", id.agentId, id.sessionKey, id.sessionId]);
-  const assertCurrent = playerCurrentAssertion(ctx);
+    channel, accountId: channel, actor };
+  const target = JSON.stringify([channel, id.agentId, id.sessionKey, id.sessionId]);
+  const assertCurrent = assertSoloCurrent ?? playerCurrentAssertion(ctx);
   assertCurrent();
   return runTransition(id, target, cmd, store, {
     assertCurrent,
@@ -665,21 +690,24 @@ export async function runPlayerIntent(ctx: PlayerToolContext, args: unknown, sto
 }
 
 export function registerPlayerIntentTool(api: Pick<OpenClawPluginApi, "registerTool" | "runtime">,
-  resolveLaunch?: (ctx: PlayerToolContext) => Promise<LaunchRoute | undefined>): void {
+  resolveLaunch?: (ctx: PlayerToolContext) => Promise<LaunchRoute | undefined>, solo?: PrivateSolo): void {
+  const name = solo?.toolName ?? "campaign_keeper_intent";
   api.registerTool({ contextVersion: 2, create(ctx) {
     return {
-      name: "campaign_keeper_intent", label: "Campaign Keeper player intent",
-      description: "Translate the current player's natural-language request into a supported action, then narrate only its committed result. Identity comes from host context. Owner-only enroll approves an exact agent source session; the agent must join. No actor override. Unsupported proposals require clarification, not invented effects.",
+      name, label: "Campaign Keeper player intent",
+      description: solo
+        ? "Apply an action for the sole player in this private Keeper chat. Choose a class before creating a save. Reads and moves use the current chat automatically."
+        : "Translate the current player's natural-language request into a supported action, then narrate only its committed result. Identity comes from host context. Owner-only enroll approves an exact agent source session; the agent must join. No actor override. Unsupported proposals require clarification, not invented effects.",
       parameters: { type: "object", additionalProperties: false, required: ["action", "requestId"],
         properties: { action: { type: "string" }, requestId: { type: "string" }, target: { type: "string" },
-          gameId: { type: "string" }, sourceSessionKey: { type: "string" },
+          ...(!solo ? { gameId: { type: "string" }, sourceSessionKey: { type: "string" } } : {}),
           choice: { type: "string" }, retreat: { type: "string" }, item: { type: "string" }, helper: { type: "string" } } } as any,
       async execute(_callId, args) {
         try {
           const launch = await resolveLaunch?.(ctx);
-          const assertPlayer = playerCurrentAssertion(ctx);
+          const assertPlayer = solo ? privateSoloAssertion(ctx, solo) : playerCurrentAssertion(ctx);
           const store = openGameStore(api.runtime, () => { assertPlayer(); launch?.assertCurrent(); });
-          const text = await runPlayerIntent(ctx, args, store, launch);
+          const text = await runPlayerIntent(ctx, args, store, launch, solo ? assertPlayer : undefined);
           return { content: [{ type: "text" as const, text }], ...(text === denied ? { details: { rejection: "adapter-validation", context: {
             agent: Boolean(ctx.agentId), session: Boolean(ctx.sessionKey), incarnation: Boolean(ctx.sessionId),
             owner: ctx.senderIsOwner === true, requester: Boolean(ctx.requesterSenderId), channel: ctx.messageChannel ?? null,
@@ -690,7 +718,7 @@ export function registerPlayerIntentTool(api: Pick<OpenClawPluginApi, "registerT
         } }; }
       },
     };
-  } }, { name: "campaign_keeper_intent" });
+  } }, { name, optional: Boolean(solo && !solo.agentId) });
 }
 
 const storeOptions = { namespace: "campaign-keeper-spike-v2", maxEntries: 64, overflowPolicy: "reject-new" } as const;

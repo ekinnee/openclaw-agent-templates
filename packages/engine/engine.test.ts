@@ -383,6 +383,100 @@ function intentFixture() {
     sourceSessionKey: "agent:main:player" } };
   return { ...f, human, agent };
 }
+
+test("private solo uses one save in an owner WebChat incarnation and rejects other callers", async () => {
+  const f = intentFixture();
+  let descriptor: any;
+  let operatorCurrent = true;
+  const player = { ...f.human, inputProvenance: undefined, requesterProfile: undefined };
+  registerPlayerIntentTool({
+    registerTool(value: any) { descriptor = value; },
+    runtime: { state: { openKeyedStoreV2() { return f.store; } } },
+  } as any, undefined, {
+    agentId: "keeper",
+    assertOperatorCurrent() { if (!operatorCurrent) throw Error("operator ended"); },
+  });
+  const invoke = async (ctx: any, args: object) =>
+    (await descriptor.create(ctx).execute("solo", args)).content[0].text;
+  const create = { action: "create", target: "tidehand", requestId: "start" };
+  for (const ctx of [
+    f.agent,
+    { ...player, inputProvenance: { kind: "internal_system" } },
+    { ...player, inputProvenance: { kind: "external_user", sourceTool: "sessions_send" } },
+    { ...player, senderIsOwner: false },
+    { ...player, agentId: "player", sessionKey: "agent:player:main" },
+    { ...player, sessionKey: "agent:player:main" },
+    { ...player, sessionKey: "agent:keeper:dashboard:incognito-session" },
+    { ...player, messageChannel: "discord" },
+  ]) assert.match(await invoke(ctx, create), /unavailable/);
+  assert.match(await invoke(player, { ...create, target: undefined }), /unavailable/);
+  operatorCurrent = false;
+  assert.match(await invoke(player, create), /unavailable/);
+  assert.equal(f.rows.size, 0);
+  operatorCurrent = true;
+  assert.match(await invoke(player, create), /tidehand.*Lantern Quay/);
+  const move = { action: "move", target: "tower", requestId: "walk" };
+  const moved = await invoke(player, move);
+  assert.match(moved, /Beacon Tower/);
+  assert.equal(await invoke(player, move), moved);
+  assert.match(await invoke(player, { action: "look", requestId: "resume" }), /Beacon Tower.*version 2/);
+  assert.match(await invoke({ ...player, sessionId: "reset" }, { action: "look", requestId: "resume" }), /unavailable/);
+  assert.match(await invoke(player, { action: "enroll", requestId: "invite" }), /unavailable/);
+  const game = [...f.rows.values()][0];
+  assert.equal(game.version, 2);
+  assert.deepEqual(Object.keys(game.players), ["solo-player"]);
+  assert.deepEqual(game.attributes[game.owner], { grit: 2, wits: 1, charm: 0 });
+});
+
+test("private solo rechecks the current operator at V2 write admission", async () => {
+  const f = intentFixture();
+  let descriptor: any;
+  let operatorCurrent = true;
+  registerPlayerIntentTool({ registerTool(value: any) { descriptor = value; }, runtime: { state: {
+    openKeyedStoreV2(_options: any, authority: any) {
+      return { ...f.store, async compareAndApply(...args: any[]) {
+        operatorCurrent = false;
+        authority.assertCurrent();
+        return (f.store.compareAndApply as any)(...args);
+      } };
+    },
+  } } } as any, undefined, {
+    agentId: "keeper",
+    assertOperatorCurrent() { if (!operatorCurrent) throw Error("operator ended"); },
+  });
+  const tool = descriptor.create({ ...f.human, requesterProfile: undefined });
+  const result = await tool.execute("solo", { action: "create", target: "tidehand", requestId: "start" });
+  assert.match(result.content[0].text, /unavailable/);
+  assert.equal(f.rows.size, 0);
+});
+
+test("the Template engine is opt-in and binds the allocated agent ID using host context", async () => {
+  const f = intentFixture();
+  let descriptor: any;
+  registerPlayerIntentTool({
+    registerTool(value: any, metadata: any) {
+      descriptor = value;
+      assert.deepEqual(metadata, { name: "campaign_keeper_solo_intent", optional: true });
+    },
+    runtime: { state: { openKeyedStoreV2() { return f.store; } } },
+  } as any, undefined, {
+    toolName: "campaign_keeper_solo_intent",
+    assertOperatorCurrent() {},
+  });
+  const context = { ...f.human, requesterProfile: undefined, agentId: "campaign-keeper-2",
+    sessionKey: "agent:campaign-keeper-2:dashboard:play", sessionId: "play-2" };
+  const create = { action: "create", target: "tidehand", requestId: "start" };
+  for (const ctx of [context, { ...context, runId: "run", backgroundRun: {} }]) {
+    const result = await descriptor.create(ctx).execute("create", create);
+    assert.match(result.content[0].text, /unavailable/);
+  }
+  assert.equal(f.rows.size, 0);
+  const tool = descriptor.create({ ...context, runId: "run" });
+  assert.equal(tool.name, "campaign_keeper_solo_intent");
+  assert.match((await tool.execute("create", create)).content[0].text, /Created game/);
+  assert.equal([...f.rows.values()][0].agentId, "campaign-keeper-2");
+});
+
 test("launcher binds one Keeper-owned game to the player's exact chat and retries without a second effect", async () => {
   const f = intentFixture();
   const keeper = { agentId: "keeper", sessionKey: "agent:keeper:dashboard:gm", sessionId: "gm-1" };
