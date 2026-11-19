@@ -4,16 +4,22 @@ The Lantern Below is a solo text adventure in six rooms, with original 2d6 rules
 
 ## Add Campaign Keeper
 
-Use a private Gateway with one trusted owner and an OpenClaw development build
-with native Template plugin installation. OpenClaw main commit
-[`d54e624149cf`](https://github.com/openclaw/openclaw/commit/d54e624149cf98ca96972d7a46815db87fcf4288)
-is the target for this Focus Week preview. Stable 2026.11.3 and beta 2026.11.5-beta.2
-predate the required Template installer.
+Use a private Gateway with one trusted owner and a build supporting the
+single-file `CLAW.md` Template contract and native Template plugin requirements.
+Local authoring is verified with OpenClaw 2026.11.5. Solo play requires an
+authenticated Gateway owner/operator in a private WebChat, with current operator
+and invocation authority. It does not require `requesterProfile`. Package
+validation alone does not establish gameplay on a particular host.
 
 Enable **Templates** in **Settings → Labs**. Select Campaign Keeper in
-**Pages → Templates**, review the pinned engine and tool grants, and choose
-**Add**. The host supplies your configured model. The Gateway owner plays
-from an ordinary persistent Keeper chat. Keep that chat private.
+**Pages → Templates** and choose **Add**. On current OpenClaw source, referenced
+community plugins are offered for separate review/installation in setup;
+Template Add alone does not install or enable them. Review
+`@ekinnee/campaign-keeper-solo-engine@0.1.0` and its tool grants before installing
+it. CLI/offline Add has its own dependency preflight and consent checks. Local
+changes here are unreleased; the catalog still serves the published version.
+The host supplies your configured model. Keep the ordinary persistent Keeper
+chat private.
 
 The engine uses one save per chat. Reopen the chat after a restart to resume it.
 New chats and resets get a new save. Solo saves are separate from the earlier
@@ -34,9 +40,28 @@ pins `@ekinnee/campaign-keeper-solo-engine@0.1.0` on ClawHub.
 
 ```bash
 openclaw templates validate templates/campaign-keeper
-openclaw templates build templates/campaign-keeper --out /tmp/campaign-keeper-0.1.0.tgz
+openclaw templates build templates/campaign-keeper --out /tmp/campaign-keeper-0.1.1.tgz
 ```
 
 To rebuild the pinned engine from this source, install the engine's development
 dependencies and run `npm --prefix packages/engine run build:private-solo --
 /path/to/new-engine-directory --release`.
+
+## Artwork and packaging
+
+`assets/icon.png` is the single shipped image source. ClawHub uses that fixed
+path for catalog artwork. `CLAW.md` copies it to `avatars/blobster-keeper.png`
+and selects that workspace avatar independently. Catalog `icon:null` does not
+prove an installed avatar failure. Existing agents are not updated by a new Add.
+
+The PNG preserves the existing main-branch Keeper artwork, resized from 768 × 768
+to 512 × 512 to fit ClawHub's 512 KiB limit. The original PNG and older SVG remain
+source-only under `avatars/`; the published 0.1.0 used the SVG, whereas this source
+base had already selected the PNG. No new design was created. Original
+illustration credit and MIT licensing are unchanged.
+
+OpenClaw limits each selected workspace file to 1 MiB and their total to 4 MiB.
+Keep the catalog PNG within the tighter 512 KiB limit. The npm `files` allowlist
+and the manifest-selected official build both ship the declared artwork and
+license; source-only artwork and acceptance notes are excluded. See the repository-only `docs/audits/template-current-guidance.md` for evidence
+and the remaining installed-play/UI limitations.

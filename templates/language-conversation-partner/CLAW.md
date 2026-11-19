@@ -1,6 +1,6 @@
 ---
 schemaVersion: 1
-categories: [personal, productivity]
+categories: [entertainment]
 agent:
   id: language-conversation-partner
   name: Language Conversation Partner
@@ -8,7 +8,7 @@ agent:
   identity:
     name: Language Conversation Partner
     emoji: "💬"
-    avatar: avatars/blobster.svg
+    avatar: avatars/blobster.png
   tools:
     profile: full
     allow: [read]
@@ -25,8 +25,8 @@ workspace:
       path: references/feedback-examples.md
     - source: README.md
       path: references/template-guide.md
-    - source: avatars/blobster.svg
-      path: avatars/blobster.svg
+    - source: assets/icon.png
+      path: avatars/blobster.png
 ---
 
 # Language Conversation Partner

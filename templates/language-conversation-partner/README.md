@@ -6,13 +6,15 @@ and no skill, plugin, MCP, or scheduled-job dependencies.
 
 ## Add locally
 
-The Focus Week package requires an OpenClaw build containing the
-[single-file Template manifest change](https://github.com/openclaw/openclaw/pull/196322).
-OpenClaw 2026.11.3 and 2026.11.5-beta.2 predate that change. Enable **Templates**
-under **Settings → Labs**, or set `gateway.controlUi.experimental.templates`
-to true on a headless installation.
+Use an OpenClaw build with the single-file `CLAW.md` Template contract. This
+package is locally verified with OpenClaw 2026.11.5; the unpublished source audit
+is recorded in the repository-only `docs/audits/template-current-guidance.md`.
+Older Focus Week instructions targeted an unreleased manifest change; version
+numbers alone do not establish a backported build's capabilities. Enable
+**Templates** under **Settings → Labs**, or set
+`gateway.controlUi.experimental.templates` to true on a headless installation.
 
-Add the published Template with:
+Add the currently published Template with (local changes here are unreleased):
 
 ```bash
 openclaw templates add @ekinnee/language-conversation-partner
@@ -79,8 +81,11 @@ an explicit host-policy choice; this package does not grant or require it.
 The manifest uses `agent.tools.profile: full` with the explicit allowlist
 `[read]`. Reads are workspace-scoped and intended for the packaged references.
 Host policy may further restrict them.
-There are no write, shell, browser, messaging, or automation grants. Other
-harnesses must enforce their own tool policies.
+The manifest grants no write, shell, browser, messaging, or automation tools.
+Current OpenClaw Control UI Add separately adds `read`, `automations`, `plugins`,
+and `message` for host-owned setup, subject to explicit denies and operator
+policy. Review the resulting agent policy if you require read-only operation.
+Other harnesses must enforce their own tool policies.
 
 This template does not record pronunciation, score audio, certify CEFR levels,
 award credentials, or promise native-level accuracy across languages. Language
@@ -97,12 +102,12 @@ personal information just to make a role-play realistic.
 ```bash
 openclaw templates validate .
 openclaw templates dev . --json
-openclaw templates build . --out ../language-conversation-partner-0.1.1.tgz
+openclaw templates build . --out ../language-conversation-partner-0.1.2.tgz
 ```
 
 Review the exact built archive before publishing it to ClawHub under `ekinnee`.
 
-Source acceptance scenarios are in tests/acceptance.md and intentionally are
+Source acceptance scenarios are in `tests/acceptance.md` and intentionally are
 not imported into the new agent's workspace or built publication artifact.
 
 ## Feedback
@@ -114,3 +119,20 @@ not imported into the new agent's workspace or built publication artifact.
 
 Created with Erick Kinnee for Agent Templates Focus Week. The Blobster uses
 OpenClaw's MIT-licensed base geometry, with a new speech-bubble design. See LICENSE.
+
+## Artwork and packaging
+
+`assets/icon.png` is the single shipped image source. ClawHub reads that fixed
+package path for the catalog icon; `CLAW.md` separately maps the same bytes to
+`avatars/blobster.png` in the new agent's workspace and selects that avatar.
+A missing catalog icon does not establish that an installed avatar is missing.
+Adding the Template again creates another agent; publishing a new release does
+not update existing avatars.
+
+The PNG is a 512-pixel-wide rasterization of the existing Conversation Blobster
+SVG, retained under `avatars/` for attribution and source editing. No new design
+was created. Keep the PNG at most 512 KiB (ClawHub), each workspace source at
+most 1 MiB, and selected workspace sources together at most 4 MiB (OpenClaw).
+The npm `files` allowlist includes the declared payload and excludes authoring
+SVGs and acceptance notes; the official Template builder uses manifest selection.
+Inspect both archives before any separately authorized publication.

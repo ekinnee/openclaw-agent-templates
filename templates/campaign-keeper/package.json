@@ -1,9 +1,19 @@
 {
   "name": "@ekinnee/campaign-keeper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "license": "MIT",
   "openclaw": {
     "template": "CLAW.md"
-  }
+  },
+  "files": [
+    "CLAW.md",
+    "BOOTSTRAP.md",
+    "README.md",
+    "LICENSE",
+    "assets/icon.png",
+    "workspace/",
+    "rules/",
+    "adventures/"
+  ]
 }
