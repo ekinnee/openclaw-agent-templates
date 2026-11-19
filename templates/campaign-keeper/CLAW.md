@@ -1,6 +1,6 @@
 ---
 schemaVersion: 1
-categories: [personal]
+categories: [entertainment]
 agent:
   id: campaign-keeper
   name: Campaign Keeper
@@ -25,7 +25,7 @@ workspace:
       path: adventures/the-lantern-below/GM.md
     - source: README.md
       path: references/template-guide.md
-    - source: avatars/blobster-keeper.png
+    - source: assets/icon.png
       path: avatars/blobster-keeper.png
 plugins:
   - ref: "@ekinnee/campaign-keeper-solo-engine"
